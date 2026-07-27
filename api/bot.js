@@ -9,7 +9,7 @@ const BOT_TOKEN = process.env.BOT_TOKEN || '8566391789:AAHxMWzB5EERqVAHI7Uf7rQod
 const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 const bot = new Bot(BOT_TOKEN);
 
-// Error Handling (Bot မရပ်သွားစေရန်)
+// Error Handling
 bot.catch((err) => {
   console.error('Error in bot:', err);
 });
@@ -27,7 +27,7 @@ bot.command('spin', async (ctx) => {
 
 // 3. Slot Machine Dice Handling Only
 bot.on('message:dice', async (ctx) => {
-  // 🎰 Slot Machine မဟုတ်ပါက (ဥပမာ 🎲, 🎯, ⚽, 🏀 စသည်) လုံးဝ မပို့ဘဲ ကျော်မည်
+  // 🎰 Slot Machine မဟုတ်ပါက လုံးဝ စာမပြန်ဘဲ ကျော်မည်
   if (!ctx.message.dice || ctx.message.dice.emoji !== '🎰') return;
 
   const diceValue = ctx.message.dice.value;
@@ -62,30 +62,35 @@ bot.on('message:dice', async (ctx) => {
       await ctx.reply('⚠️ Database error. Please try again.');
     }
   } else {
-    // 777 မကျပါက "ထပ်ကြိုးစားပါ" စာတို
+    // 777 မကျပါက
     await ctx.reply(`❌ Try again @${username}! Better luck next time.`);
   }
 });
 
-// ကျန်တဲ့ စကားပြောတာတွေ၊ တခြား Message အမျိုးအစားအားလုံးကို လုံးဝ Ignore လုပ်မည်
-bot.on('message', () => {
-  // Do nothing
-});
-
-// Vercel Express Adapter
-const handleWebhook = webhookCallback(bot, 'express');
+// Vercel Serverless Native Handler
+const handleWebhook = webhookCallback(bot, 'std/http');
 
 module.exports = async (req, res) => {
   if (req.method === 'POST') {
     try {
-      await handleWebhook(req, res);
+      const host = req.headers.host || 'spin-bot-ten.vercel.app';
+      const url = `https://${host}${req.url}`;
+      
+      const response = await handleWebhook(
+        new Request(url, {
+          method: 'POST',
+          headers: req.headers,
+          body: typeof req.body === 'string' ? req.body : JSON.stringify(req.body || {}),
+        })
+      );
+
+      res.status(response.status);
+      const text = await response.text();
+      return res.send(text);
     } catch (err) {
       console.error("Webhook processing error:", err);
-      if (!res.headersSent) {
-        res.status(200).send('OK');
-      }
+      return res.status(200).send('OK');
     }
-    return;
   }
 
   return res.status(200).send('Bot Status: Active and Running!');

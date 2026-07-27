@@ -46,29 +46,9 @@ bot.command('start', async (ctx) => {
   const rawUsername = ctx.from?.username || ctx.from?.first_name || `ID: ${userId}`;
   const displayName = ctx.from?.username ? `@${ctx.from.username}` : rawUsername;
 
-  // Supabase မှာ အကောင့် မရှိသေးရင် တန်းဖန်တီးပေးပြီး Current Balance ရယူမည်
-  let currentBalance = 0;
-  try {
-    let { data: user } = await supabase
-      .from('users')
-      .select('balance')
-      .eq('telegram_id', userId)
-      .single();
-
-    if (user) {
-      currentBalance = parseFloat(user.balance || 0);
-    } else {
-      await supabase.from('users').upsert({
-        telegram_id: userId,
-        username: rawUsername,
-        balance: 0
-      });
-    }
-  } catch (e) {}
-
   const startMessage = `<b>Welcome ${displayName}! 🎰</b>\n` +
     `<b>Play Jackpot and earn rewards!</b>\n` +
-    `<blockquote><b>Balance = <code>${currentBalance.toFixed(6)} 💎</code></b></blockquote>\n` +
+    `<blockquote><b>Balance = <code>0.0000 💎</code></b></blockquote>\n` +
     `<b>Mini 0.05 GRAM💰,📢@Rampage528</b>`;
 
   const sent = await ctx.reply(startMessage, { parse_mode: 'HTML' });
@@ -109,7 +89,7 @@ bot.on('message:dice', async (ctx) => {
 
       let currentBalance = user ? parseFloat(user.balance || 0) : 0;
       
-      // Floating Point Error မဖြစ်အောင် ၁သန်းနဲ့မြှောက်၊ ဝိုင်းပြီးမှ ဒသမပြန်ခွဲ ပေါင်းပေးခြင်း
+      // Floating Point Error မဖြစ်အောင် Math.round ဖြင့် တိတိကျကျ ပေါင်းပေးခြင်း
       let rawNewBalance = currentBalance + reward;
       let newBalance = Number(Math.round(rawNewBalance + 'e6') + 'e-6');
 

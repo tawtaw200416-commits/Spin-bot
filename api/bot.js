@@ -1,9 +1,9 @@
 const { Bot, webhookCallback } = require('grammy');
 const { createClient } = require('@supabase/supabase-js');
 
-// Supabase Configuration
+// Supabase Configuration (သင်ပေးပို့ထားသော Key အသစ်ဖြင့် ပြင်ဆင်ထားသည်)
 const SUPABASE_URL = process.env.SUPABASE_URL || 'https://bncbaexhrofqslsfovow.supabase.co';
-const SUPABASE_KEY = process.env.SUPABASE_ANON_KEY || 'EyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJuY2JhZXhocm9mcXNsc2Zvdm93Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODUwMTQ2MTUsImV4cCI6MjEwMDU5MDYxNX0.BgwdnA1MnU9tgat8A_ULS25KRS-r_OkP-bO6KHPCQGA';
+const SUPABASE_KEY = process.env.SUPABASE_ANON_KEY || 'Sb_publishable_i2ZbSs9hDGTOFSYOuhn6kg_dRTyZZC0';
 
 // Telegram Bot Token
 const BOT_TOKEN = process.env.BOT_TOKEN || '8566391789:AAHxMWzB5EERqVAHI7Uf7rQodKzxVbv6SbM';
@@ -11,18 +11,16 @@ const BOT_TOKEN = process.env.BOT_TOKEN || '8566391789:AAHxMWzB5EERqVAHI7Uf7rQod
 const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 const bot = new Bot(BOT_TOKEN);
 
-// 1. /start Command
+// Commands & Handlers
 bot.command('start', async (ctx) => {
   const username = ctx.from.username || ctx.from.first_name;
   await ctx.reply(`မင်္ဂလာပါ ${username}! 🎰 Slot Machine (Emoji) ကို ပို့ပြီး Spin ဆော့ကစားနိုင်ပါတယ်။ 777 ကျရင် GRAM ဆုငွေ ရရှိပါမည်!`);
 });
 
-// 2. /spin Command
 bot.command('spin', async (ctx) => {
   await ctx.replyWithDice('🎰');
 });
 
-// 3. Slot Machine Dice ဂိမ်း အလုပ်လုပ်မည့် အပိုင်း
 bot.on('message:dice', async (ctx) => {
   if (ctx.message.dice.emoji !== '🎰') return;
 
@@ -60,12 +58,29 @@ bot.on('message:dice', async (ctx) => {
   }
 });
 
-// Vercel Serverless Function Handler ကို Express/HTTP Adapater သို့ ပြောင်းလဲထားခြင်း
-const handleWebhook = webhookCallback(bot, 'express');
+// Vercel Serverless Function Native Handler
+const handleWebhook = webhookCallback(bot, 'std/http');
 
 module.exports = async (req, res) => {
   if (req.method === 'POST') {
-    return handleWebhook(req, res);
+    try {
+      const url = `https://${req.headers.host}${req.url}`;
+      const response = await handleWebhook(
+        new Request(url, {
+          method: 'POST',
+          headers: req.headers,
+          body: JSON.stringify(req.body),
+        })
+      );
+
+      res.status(response.status);
+      const text = await response.text();
+      return res.send(text);
+    } catch (err) {
+      console.error("Webhook processing error:", err);
+      return res.status(200).send('OK');
+    }
   }
-  return res.status(200).send('Bot is running!');
+
+  return res.status(200).send('Bot Status: Active and Running!');
 };

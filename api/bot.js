@@ -14,13 +14,36 @@ bot.catch((err) => {
   console.error('Error in bot:', err);
 });
 
+// Helper function to delay execution
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+// Helper function to auto delete bot response after specified time (e.g. 5 seconds)
+const replyAndDelete = async (ctx, text, delayMs = 5000) => {
+  try {
+    const sentMessage = await ctx.reply(text);
+    setTimeout(async () => {
+      try {
+        await ctx.api.deleteMessage(ctx.chat.id, sentMessage.message_id);
+      } catch (e) {
+        console.error("Could not delete message:", e);
+      }
+    }, delayMs);
+  } catch (err) {
+    console.error("Reply error:", err);
+  }
+};
+
 // 1. /start Command
 bot.command('start', async (ctx) => {
   const isChannel = !!ctx.message.sender_chat;
   const userId = isChannel ? ctx.message.sender_chat.id : ctx.from.id;
   const username = ctx.from?.username ? `@${ctx.from.username}` : (ctx.from?.first_name || `ID: ${userId}`);
 
-  await ctx.reply(`Welcome ${username}! 🎰 Play Jackpot and earn rewards!\n\nMini 0.05 GRAM, 📢 @Rampage528\n\nSend the Slot Machine emoji to play. Get 777 to win 0.001 GRAM!`);
+  await replyAndDelete(
+    ctx,
+    `Welcome ${username}! 🎰 Play Jackpot and earn rewards!\n\nMini 0.05 GRAM, 📢 @Rampage528\n\nSend the Slot Machine emoji to play. Get 777 to win 0.001 GRAM!`,
+    8000 // /start စာကို ၈ စက္ကန့်အကြာတွင် ဖျက်မည်
+  );
 });
 
 // 2. /spin Command
@@ -56,6 +79,9 @@ bot.on('message:dice', async (ctx) => {
     }
   }
 
+  // Telegram Slot Machine Animation ရပ်ရန် ၃ စက္ကန့် စောင့်ခြင်း
+  await sleep(3500);
+
   // 777 Jackpot (Value = 64)
   if (diceValue === 64) {
     const reward = 0.001;
@@ -76,15 +102,17 @@ bot.on('message:dice', async (ctx) => {
         balance: newBalance
       });
 
-      await ctx.reply(
-        `🎉 Congratulations ${displayName}!\nYou hit 777 Jackpot and received 0.001 GRAM!\nBalance = ${newBalance.toFixed(4)} GRAM💸\n\nMini 0.05 GRAM, 📢 @Rampage528`
+      await replyAndDelete(
+        ctx,
+        `🎉 Congratulations ${displayName}!\nYou hit 777 Jackpot and received 0.001 GRAM!\nBalance = ${newBalance.toFixed(4)} GRAM💸\n\nMini 0.05 GRAM, 📢 @Rampage528`,
+        6000 // စာကို ၆ စက္ကန့်အကြာတွင် ဖျက်မည်
       );
     } catch (error) {
       console.error("Supabase Error:", error);
-      await ctx.reply('⚠️ Database error. Please try again.');
+      await replyAndDelete(ctx, '⚠️ Database error. Please try again.', 3000);
     }
   } else {
-    // 777 မကျပါက (လက်ရှိ Balance ကိုပါ ပြသပေးမည်)
+    // 777 မကျပါက (လက်ရှိ Balance ပြသပြီး စာပြန်ဖျက်ပေးမည်)
     try {
       let { data: user } = await supabase
         .from('users')
@@ -94,11 +122,17 @@ bot.on('message:dice', async (ctx) => {
 
       let currentBalance = user ? parseFloat(user.balance || 0) : 0;
 
-      await ctx.reply(
-        `❌ Try again ${displayName}! Better luck next time.\nBalance = ${currentBalance.toFixed(4)} GRAM💸\n\nMini 0.05 GRAM, 📢 @Rampage528`
+      await replyAndDelete(
+        ctx,
+        `❌ Try again ${displayName}! Better luck next time.\nBalance = ${currentBalance.toFixed(4)} GRAM💸\n\nMini 0.05 GRAM, 📢 @Rampage528`,
+        5000 // စာကို ၅ စက္ကန့်အကြာတွင် ဖျက်မည်
       );
     } catch (error) {
-      await ctx.reply(`❌ Try again ${displayName}! Better luck next time.\n\nMini 0.05 GRAM, 📢 @Rampage528`);
+      await replyAndDelete(
+        ctx,
+        `❌ Try again ${displayName}! Better luck next time.\n\nMini 0.05 GRAM, 📢 @Rampage528`,
+        5000
+      );
     }
   }
 });

@@ -9,8 +9,16 @@ const BOT_TOKEN = process.env.BOT_TOKEN || '8566391789:AAHxMWzB5EERqVAHI7Uf7rQod
 const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 const bot = new Bot(BOT_TOKEN);
 
-// Sleep Helper Function (Spin ရပ်သည်နှင့် ချက်ချင်းပေါ်စေရန် 1 စက္ကန့်သို့ လျှော့ချထားပါသည်)
+// Sleep Helper Function
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+// Slot Machine Rewards Mapping
+const SLOT_REWARDS = {
+  64: { reward: 0.001, name: '7 7 7' },
+  43: { reward: 0.0003, name: '🍫 🍫 🍫' },
+  22: { reward: 0.0002, name: '🍋 🍋 🍋' },
+  1:  { reward: 0.0001, name: '🍒 🍒 🍒' }
+};
 
 // Error Handling
 bot.catch((err) => {
@@ -25,7 +33,7 @@ bot.command('start', async (ctx) => {
 
   const startMessage = `<b>Welcome ${displayName}! 🎰</b>\n` +
     `<b>Play Jackpot and earn rewards!</b>\n` +
-    `<blockquote><b>Balance = <code>0.0000 GRAM</code>💸</b></blockquote>\n` +
+    `<blockquote><b>Balance = <code>0.0000 💎</code></b></blockquote>\n` +
     `<b>Mini 0.05 GRAM💰,📢@Rampage528</b>`;
 
   const sent = await ctx.reply(startMessage, { parse_mode: 'HTML' });
@@ -43,26 +51,25 @@ bot.command('spin', async (ctx) => {
   await ctx.replyWithDice('🎰');
 });
 
-// 3. Slot Machine Dice Handling Only
+// 3. Slot Machine Dice Handling
 bot.on('message:dice', async (ctx) => {
-  // 🎰 Slot Machine မဟုတ်ပါက လုံးဝ စာမပြန်ဘဲ ကျော်မည်
   if (!ctx.message.dice || ctx.message.dice.emoji !== '🎰') return;
 
   const diceValue = ctx.message.dice.value;
   const userId = ctx.from.id;
   
-  // User Identification (Channel အကောင့် မပါစေရ)
   const rawUsername = ctx.from.username || ctx.from.first_name || `ID: ${userId}`;
   const displayName = ctx.from.username ? `@${ctx.from.username}` : rawUsername;
 
-  // Spin Animation ရပ်သည်နှင့် စာချက်ချင်းပေါ်စေရန် 1000ms (1 စက္ကန့်) သာ စောင့်မည်
+  // Spin Animation ရပ်သည်နှင့် စာချက်ချင်းပေါ်စေရန် 1s စောင့်မည်
   await sleep(1000);
 
   let replyText = '';
+  const winCombination = SLOT_REWARDS[diceValue];
 
-  // 777 Jackpot (Value = 64)
-  if (diceValue === 64) {
-    const reward = 0.001;
+  if (winCombination) {
+    // အနိုင်ရရှိသည့် အကွက်ကျပါက
+    const reward = winCombination.reward;
 
     try {
       let { data: user } = await supabase
@@ -81,17 +88,17 @@ bot.on('message:dice', async (ctx) => {
       });
 
       replyText = `🎉 <b>Congratulations ${displayName}!</b>\n` +
-        `<b>You hit 777 Jackpot and received 0.001 GRAM!</b>\n` +
-        `<blockquote><b>Balance = <code>${newBalance.toFixed(4)} GRAM</code>💸</b></blockquote>\n` +
+        `<b>You got ${winCombination.name} and received ${reward} GRAM!</b>\n` +
+        `<blockquote><b>Balance = <code>${newBalance.toFixed(4)} 💎</code></b></blockquote>\n` +
         `<b>Mini 0.05 GRAM💰,📢@Rampage528</b>`;
     } catch (error) {
       console.error("Supabase Error:", error);
       replyText = `🎉 <b>Congratulations ${displayName}!</b>\n` +
-        `<b>You hit 777 Jackpot!</b>\n` +
+        `<b>You got ${winCombination.name}!</b>\n` +
         `<b>Mini 0.05 GRAM💰,📢@Rampage528</b>`;
     }
   } else {
-    // 777 မကျပါက (လက်ရှိ Balance ပြသမည်)
+    // မပေါက်ပါက (လက်ရှိ Balance ပြသမည်)
     try {
       let { data: user } = await supabase
         .from('users')
@@ -101,7 +108,7 @@ bot.on('message:dice', async (ctx) => {
 
       let currentBalance = user ? parseFloat(user.balance || 0) : 0;
       replyText = `❌ <b>Try again ${displayName}! Better luck next time.</b>\n` +
-        `<blockquote><b>Balance = <code>${currentBalance.toFixed(4)} GRAM</code>💸</b></blockquote>\n` +
+        `<blockquote><b>Balance = <code>${currentBalance.toFixed(4)} 💎</code></b></blockquote>\n` +
         `<b>Mini 0.05 GRAM💰,📢@Rampage528</b>`;
     } catch (error) {
       replyText = `❌ <b>Try again ${displayName}! Better luck next time.</b>\n` +
@@ -112,7 +119,7 @@ bot.on('message:dice', async (ctx) => {
   // စာပြန်ပို့ခြင်း (parse_mode: 'HTML' ဖြင့် အထူနှင့် ဘောင်ပေါ်စေသည်)
   const sentMsg = await ctx.reply(replyText, { parse_mode: 'HTML' });
 
-  // စာပို့ပြီး ၅ စက္ကန့် (5000ms) အကြာတွင် အလိုအလျောက် ပြန်ဖျက်မည်
+  // ၅ စက္ကန့်အကြာတွင် အလိုအလျောက် ပြန်ဖျက်မည်
   setTimeout(async () => {
     try {
       await ctx.api.deleteMessage(ctx.chat.id, sentMsg.message_id);
@@ -120,7 +127,7 @@ bot.on('message:dice', async (ctx) => {
   }, 5000);
 });
 
-// Vercel Serverless Native Handler (မူလအတိုင်း မပြောင်းလဲပါ)
+// Vercel Serverless Native Handler
 const handleWebhook = webhookCallback(bot, 'std/http');
 
 module.exports = async (req, res) => {

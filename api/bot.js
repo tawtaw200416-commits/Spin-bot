@@ -64,9 +64,9 @@ bot.command('spin', async (ctx) => {
 bot.on('message:dice', async (ctx) => {
   if (!ctx.message.dice || ctx.message.dice.emoji !== '🎰') return;
 
-  // Channel Post ရဲ့ Comment (Reply) သို့မဟုတ် Discussion Topic ထဲမှာ မန့်မှသာ အောက်က Code များ ဆက်လုပ်မည်
+  // Channel Comment (Reply) ဟုတ်မဟုတ် စစ်ဆေးခြင်း
   const isComment = ctx.message.reply_to_message || ctx.message.is_topic_message;
-  if (!isComment) return;
+  if (!isComment) return; // Comment မဟုတ်ရင် Balance မပေါင်းဘဲ ဒီအတိုင်း ထွက်သွားမည်
 
   const diceValue = ctx.message.dice.value;
   const userId = ctx.from.id;
@@ -131,8 +131,18 @@ bot.on('message:dice', async (ctx) => {
     }
   }
 
-  // စာပြန်ပို့ခြင်း (parse_mode: 'HTML' ဖြင့် အထူနှင့် ဘောင်ပေါ်စေသည်)
-  const sentMsg = await ctx.reply(replyText, { parse_mode: 'HTML' });
+  // Comment ထဲမှာ စာမပျောက်ဘဲ မှန်မှန်ကန်ကန် ပြန်ပို့ပေးနိုင်ရန် message_thread_id ထည့်သွင်းခြင်း
+  const replyOptions = { 
+    parse_mode: 'HTML',
+    reply_to_message_id: ctx.message.message_id
+  };
+  
+  if (ctx.message.message_thread_id) {
+    replyOptions.message_thread_id = ctx.message.message_thread_id;
+  }
+
+  // စာပြန်ပို့ခြင်း
+  const sentMsg = await ctx.reply(replyText, replyOptions);
 
   // ၅ စက္ကန့် စောင့်ပြီးမှ Auto Delete လုပ်ရန် Background သို့ လွှဲပေးမည်
   deleteMessageLater(ctx, ctx.chat.id, sentMsg.message_id, 5000);

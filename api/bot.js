@@ -25,6 +25,21 @@ bot.catch((err) => {
   console.error('Error in bot:', err);
 });
 
+// Delay ဖြင့် Background မှာ Message ဖျက်ပေးမည့် Helper Function
+const deleteMessageLater = (ctx, chatId, messageId, delay = 5000) => {
+  const promise = (async () => {
+    await sleep(delay);
+    try {
+      await ctx.api.deleteMessage(chatId, messageId);
+    } catch (e) {}
+  })();
+
+  // Vercel Serverless Background Execution (If available)
+  if (ctx.waitUntil) {
+    ctx.waitUntil(promise);
+  }
+};
+
 // 1. /start Command
 bot.command('start', async (ctx) => {
   const userId = ctx.from?.id;
@@ -37,12 +52,7 @@ bot.command('start', async (ctx) => {
     `<b>Mini 0.05 GRAM💰,📢@Rampage528</b>`;
 
   const sent = await ctx.reply(startMessage, { parse_mode: 'HTML' });
-
-  // ၅ စက္ကန့် စောင့်ပြီးမှ Auto Delete လုပ်မည်
-  await sleep(5000);
-  try {
-    await ctx.api.deleteMessage(ctx.chat.id, sent.message_id);
-  } catch (e) {}
+  deleteMessageLater(ctx, ctx.chat.id, sent.message_id, 5000);
 });
 
 // 2. /spin Command
@@ -107,7 +117,7 @@ bot.on('message:dice', async (ctx) => {
 
       let currentBalance = user ? parseFloat(user.balance || 0) : 0;
       replyText = `❌ <b>Try again ${displayName}! Better luck next time.</b>\n` +
-        `<blockquote><b>Balance = <code>${newBalance.toFixed(4)} 💎</code></b></blockquote>\n` +
+        `<blockquote><b>Balance = <code>${currentBalance.toFixed(4)} 💎</code></b></blockquote>\n` +
         `<b>Mini 0.05 GRAM💰,📢@Rampage528</b>`;
     } catch (error) {
       replyText = `❌ <b>Try again ${displayName}! Better luck next time.</b>\n` +
@@ -118,17 +128,14 @@ bot.on('message:dice', async (ctx) => {
   // စာပြန်ပို့ခြင်း (parse_mode: 'HTML' ဖြင့် အထူနှင့် ဘောင်ပေါ်စေသည်)
   const sentMsg = await ctx.reply(replyText, { parse_mode: 'HTML' });
 
-  // ၅ စက္ကန့် စောင့်ပြီးမှ Auto Delete လုပ်မည်
-  await sleep(5000);
-  try {
-    await ctx.api.deleteMessage(ctx.chat.id, sentMsg.message_id);
-  } catch (e) {}
+  // ၅ စက္ကန့် စောင့်ပြီးမှ Auto Delete လုပ်ရန် Background သို့ လွှဲပေးမည်
+  deleteMessageLater(ctx, ctx.chat.id, sentMsg.message_id, 5000);
 });
 
 // Vercel Serverless Native Handler
 const handleWebhook = webhookCallback(bot, 'std/http');
 
-module.exports = async (req, res) => {
+module.exports = async (req, res, context) => {
   if (req.method === 'POST') {
     try {
       const host = req.headers.host || 'spin-bot-ten.vercel.app';
@@ -139,7 +146,8 @@ module.exports = async (req, res) => {
           method: 'POST',
           headers: req.headers,
           body: typeof req.body === 'string' ? req.body : JSON.stringify(req.body || {}),
-        })
+        }),
+        context
       );
 
       res.status(response.status);

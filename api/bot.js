@@ -16,8 +16,11 @@ bot.catch((err) => {
 
 // 1. /start Command
 bot.command('start', async (ctx) => {
-  const username = ctx.from.username || ctx.from.first_name;
-  await ctx.reply(`Welcome @${username}! 🎰 Play Jackpot and earn rewards!\nSend the Slot Machine emoji to play. Get 777 to win 0.001 GRAM!`);
+  const isChannel = !!ctx.message.sender_chat;
+  const userId = isChannel ? ctx.message.sender_chat.id : ctx.from.id;
+  const username = ctx.from?.username ? `@${ctx.from.username}` : (ctx.from?.first_name || `ID: ${userId}`);
+
+  await ctx.reply(`Welcome ${username}! 🎰 Play Jackpot and earn rewards!\n\nMini 0.05 GRAM, 📢 @Rampage528\n\nSend the Slot Machine emoji to play. Get 777 to win 0.001 GRAM!`);
 });
 
 // 2. /spin Command
@@ -25,14 +28,33 @@ bot.command('spin', async (ctx) => {
   await ctx.replyWithDice('🎰');
 });
 
-// 3. Slot Machine Dice Handling Only
+// 3. Slot Machine Dice Handling
 bot.on('message:dice', async (ctx) => {
-  // 🎰 Slot Machine မဟုတ်ပါက လုံးဝ စာမပြန်ဘဲ ကျော်မည်
   if (!ctx.message.dice || ctx.message.dice.emoji !== '🎰') return;
 
   const diceValue = ctx.message.dice.value;
-  const userId = ctx.from.id;
-  const username = ctx.from.username || ctx.from.first_name;
+  const isChannel = !!ctx.message.sender_chat;
+  const userId = isChannel ? ctx.message.sender_chat.id : ctx.from.id;
+  
+  let displayName = '';
+  let dbUsername = '';
+
+  if (isChannel) {
+    const title = ctx.message.sender_chat.title || `ID: ${userId}`;
+    displayName = title.startsWith('@') ? title : `@${title}`;
+    dbUsername = title;
+  } else {
+    if (ctx.from.username) {
+      displayName = `@${ctx.from.username}`;
+      dbUsername = ctx.from.username;
+    } else if (ctx.from.first_name) {
+      displayName = ctx.from.first_name;
+      dbUsername = ctx.from.first_name;
+    } else {
+      displayName = `ID: ${userId}`;
+      dbUsername = `ID: ${userId}`;
+    }
+  }
 
   // 777 Jackpot (Value = 64)
   if (diceValue === 64) {
@@ -50,47 +72,51 @@ bot.on('message:dice', async (ctx) => {
 
       await supabase.from('users').upsert({
         telegram_id: userId,
-        username: username,
+        username: dbUsername,
         balance: newBalance
       });
 
       await ctx.reply(
-        `🎉 Congratulations @${username}!\nYou hit 777 Jackpot and received 0.001 GRAM!\n💰 Total Balance: ${newBalance.toFixed(3)} GRAM`
+        `🎉 Congratulations ${displayName}!\nYou hit 777 Jackpot and received 0.001 GRAM!\nBalance = ${newBalance.toFixed(4)} GRAM💸\n\nMini 0.05 GRAM, 📢 @Rampage528`
       );
     } catch (error) {
       console.error("Supabase Error:", error);
       await ctx.reply('⚠️ Database error. Please try again.');
     }
   } else {
-    // 777 မကျပါက
-    await ctx.reply(`❌ Try again @${username}! Better luck next time.`);
+    // 777 မကျပါက (လက်ရှိ Balance ကိုပါ ပြသပေးမည်)
+    try {
+      let { data: user } = await supabase
+        .from('users')
+        .select('balance')
+        .eq('telegram_id', userId)
+        .single();
+
+      let currentBalance = user ? parseFloat(user.balance || 0) : 0;
+
+      await ctx.reply(
+        `❌ Try again ${displayName}! Better luck next time.\nBalance = ${currentBalance.toFixed(4)} GRAM💸\n\nMini 0.05 GRAM, 📢 @Rampage528`
+      );
+    } catch (error) {
+      await ctx.reply(`❌ Try again ${displayName}! Better luck next time.\n\nMini 0.05 GRAM, 📢 @Rampage528`);
+    }
   }
 });
 
-// Vercel Serverless Native Handler
-const handleWebhook = webhookCallback(bot, 'std/http');
+// Vercel Express Handler
+const handleWebhook = webhookCallback(bot, 'express');
 
 module.exports = async (req, res) => {
   if (req.method === 'POST') {
     try {
-      const host = req.headers.host || 'spin-bot-ten.vercel.app';
-      const url = `https://${host}${req.url}`;
-      
-      const response = await handleWebhook(
-        new Request(url, {
-          method: 'POST',
-          headers: req.headers,
-          body: typeof req.body === 'string' ? req.body : JSON.stringify(req.body || {}),
-        })
-      );
-
-      res.status(response.status);
-      const text = await response.text();
-      return res.send(text);
+      await handleWebhook(req, res);
     } catch (err) {
       console.error("Webhook processing error:", err);
-      return res.status(200).send('OK');
+      if (!res.headersSent) {
+        res.status(200).send('OK');
+      }
     }
+    return;
   }
 
   return res.status(200).send('Bot Status: Active and Running!');

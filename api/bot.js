@@ -89,8 +89,8 @@ bot.on('message:dice', async (ctx) => {
 
       let currentBalance = user ? parseFloat(user.balance || 0) : 0;
       
-      // Floating point error မတက်အောင် ပေါင်းတဲ့နေရာ အောက်ပါအတိုင်း ပြင်ထားပါတယ်
-      let newBalance = Math.round((currentBalance + reward) * 10000) / 10000;
+      // ဒသမ မှန်အောင် ပေါင်းပေးမည့် စာကြောင်း
+      let newBalance = Math.round((currentBalance + reward) * 1000000) / 1000000;
 
       await supabase.from('users').upsert({
         telegram_id: userId,
@@ -100,7 +100,7 @@ bot.on('message:dice', async (ctx) => {
 
       replyText = `🎉 <b>Congratulations ${displayName}!</b>\n` +
         `<b>You got ${winCombination.name} and received ${reward} GRAM!</b>\n` +
-        `<blockquote><b>Balance = <code>${newBalance.toFixed(4)} 💎</code></b></blockquote>\n` +
+        `<blockquote><b>Balance = <code>${newBalance.toFixed(6)} 💎</code></b></blockquote>\n` +
         `<b>Mini 0.05 GRAM💰,📢@Rampage528</b>`;
     } catch (error) {
       console.error("Supabase Error:", error);
@@ -119,7 +119,7 @@ bot.on('message:dice', async (ctx) => {
 
       let currentBalance = user ? parseFloat(user.balance || 0) : 0;
       replyText = `❌ <b>Try again ${displayName}! Better luck next time.</b>\n` +
-        `<blockquote><b>Balance = <code>${currentBalance.toFixed(4)} 💎</code></b></blockquote>\n` +
+        `<blockquote><b>Balance = <code>${currentBalance.toFixed(6)} 💎</code></b></blockquote>\n` +
         `<b>Mini 0.05 GRAM💰,📢@Rampage528</b>`;
     } catch (error) {
       replyText = `❌ <b>Try again ${displayName}! Better luck next time.</b>\n` +

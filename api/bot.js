@@ -38,12 +38,11 @@ bot.command('start', async (ctx) => {
 
   const sent = await ctx.reply(startMessage, { parse_mode: 'HTML' });
 
-  // 5s ကြာလျှင် စာဖျက်မည်
-  setTimeout(async () => {
-    try {
-      await ctx.api.deleteMessage(ctx.chat.id, sent.message_id);
-    } catch (e) {}
-  }, 5000);
+  // ၅ စက္ကန့် စောင့်ပြီးမှ Auto Delete လုပ်မည်
+  await sleep(5000);
+  try {
+    await ctx.api.deleteMessage(ctx.chat.id, sent.message_id);
+  } catch (e) {}
 });
 
 // 2. /spin Command
@@ -108,7 +107,7 @@ bot.on('message:dice', async (ctx) => {
 
       let currentBalance = user ? parseFloat(user.balance || 0) : 0;
       replyText = `❌ <b>Try again ${displayName}! Better luck next time.</b>\n` +
-        `<blockquote><b>Balance = <code>${currentBalance.toFixed(4)} 💎</code></b></blockquote>\n` +
+        `<blockquote><b>Balance = <code>${newBalance.toFixed(4)} 💎</code></b></blockquote>\n` +
         `<b>Mini 0.05 GRAM💰,📢@Rampage528</b>`;
     } catch (error) {
       replyText = `❌ <b>Try again ${displayName}! Better luck next time.</b>\n` +
@@ -119,12 +118,11 @@ bot.on('message:dice', async (ctx) => {
   // စာပြန်ပို့ခြင်း (parse_mode: 'HTML' ဖြင့် အထူနှင့် ဘောင်ပေါ်စေသည်)
   const sentMsg = await ctx.reply(replyText, { parse_mode: 'HTML' });
 
-  // ၅ စက္ကန့်အကြာတွင် အလိုအလျောက် ပြန်ဖျက်မည်
-  setTimeout(async () => {
-    try {
-      await ctx.api.deleteMessage(ctx.chat.id, sentMsg.message_id);
-    } catch (e) {}
-  }, 5000);
+  // ၅ စက္ကန့် စောင့်ပြီးမှ Auto Delete လုပ်မည်
+  await sleep(5000);
+  try {
+    await ctx.api.deleteMessage(ctx.chat.id, sentMsg.message_id);
+  } catch (e) {}
 });
 
 // Vercel Serverless Native Handler

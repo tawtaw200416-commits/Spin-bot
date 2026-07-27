@@ -64,7 +64,7 @@ bot.command('spin', async (ctx) => {
 bot.on('message:dice', async (ctx) => {
   if (!ctx.message.dice || ctx.message.dice.emoji !== '🎰') return;
 
-  // Channel Post ရဲ့ Comment (Reply/Topic) မဟုတ်ပါက Balance မပေါင်းပေးဘဲ ကျော်သွားမည်
+  // Comment (Reply/Topic Message) မဟုတ်ရင် စာမပြန်ဘဲ ကျော်သွားမည်
   const isComment = ctx.message.reply_to_message || ctx.message.is_topic_message;
   if (!isComment) return;
 

@@ -1,7 +1,7 @@
 const { Bot, webhookCallback } = require('grammy');
 const { createClient } = require('@supabase/supabase-js');
 
-// Supabase Configuration (အသစ်ပြင်ဆင်ထားသော Credentials များ)
+// Supabase Configuration
 const SUPABASE_URL = process.env.SUPABASE_URL || 'https://bncbaexhrofqslsfovow.supabase.co';
 const SUPABASE_KEY = process.env.SUPABASE_ANON_KEY || 'EyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJuY2JhZXhocm9mcXNsc2Zvdm93Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODUwMTQ2MTUsImV4cCI6MjEwMDU5MDYxNX0.BgwdnA1MnU9tgat8A_ULS25KRS-r_OkP-bO6KHPCQGA';
 
@@ -60,5 +60,12 @@ bot.on('message:dice', async (ctx) => {
   }
 });
 
-// Vercel Webhook Handler
-module.exports = webhookCallback(bot, 'std/http');
+// Vercel Serverless Function Handler ကို Express/HTTP Adapater သို့ ပြောင်းလဲထားခြင်း
+const handleWebhook = webhookCallback(bot, 'express');
+
+module.exports = async (req, res) => {
+  if (req.method === 'POST') {
+    return handleWebhook(req, res);
+  }
+  return res.status(200).send('Bot is running!');
+};

@@ -1,7 +1,7 @@
 const { Bot, webhookCallback } = require('grammy');
 const { createClient } = require('@supabase/supabase-js');
 
-// Supabase Configuration
+// Supabase & Bot Setup
 const SUPABASE_URL = process.env.SUPABASE_URL || 'https://bncbaexhrofqslsfovow.supabase.co';
 const SUPABASE_KEY = process.env.SUPABASE_ANON_KEY || 'Sb_publishable_i2ZbSs9hDGTOFSYOuhn6kg_dRTyZZC0';
 const BOT_TOKEN = process.env.BOT_TOKEN || '8566391789:AAHxMWzB5EERqVAHI7Uf7rQodKzxVbv6SbM';
@@ -10,10 +10,10 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 const bot = new Bot(BOT_TOKEN);
 
 bot.catch((err) => {
-  console.error('Error in bot:', err);
+  console.error('Grammy error:', err);
 });
 
-// Helper Function: 3.5 စက္ကန့် စောင့်ဆိုင်းရန်
+// Sleep Helper
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 // 1. /start Command
@@ -22,16 +22,16 @@ bot.command('start', async (ctx) => {
   const userId = isChannel ? ctx.message.sender_chat.id : ctx.from.id;
   const username = ctx.from?.username ? `@${ctx.from.username}` : (ctx.from?.first_name || `ID: ${userId}`);
 
-  const msg = await ctx.reply(
+  const sent = await ctx.reply(
     `Welcome ${username}! 🎰 Play Jackpot and earn rewards!\n\nMini 0.05 GRAM, 📢 @Rampage528\n\nSend the Slot Machine emoji to play. Get 777 to win 0.001 GRAM!`
   );
 
-  // ၆ စက္ကန့်ကြာရင် ဖျက်ရန်
+  // ၅ စက္ကန့်ကြာလျှင် စာဖျက်မည်
   setTimeout(async () => {
     try {
-      await ctx.api.deleteMessage(ctx.chat.id, msg.message_id);
+      await ctx.api.deleteMessage(ctx.chat.id, sent.message_id);
     } catch (e) {}
-  }, 6000);
+  }, 5000);
 });
 
 // 2. /spin Command
@@ -39,14 +39,14 @@ bot.command('spin', async (ctx) => {
   await ctx.replyWithDice('🎰');
 });
 
-// 3. Slot Machine Dice Handling
+// 3. Slot Machine Dice
 bot.on('message:dice', async (ctx) => {
   if (!ctx.message.dice || ctx.message.dice.emoji !== '🎰') return;
 
   const diceValue = ctx.message.dice.value;
   const isChannel = !!ctx.message.sender_chat;
   const userId = isChannel ? ctx.message.sender_chat.id : ctx.from.id;
-  
+
   let displayName = '';
   let dbUsername = '';
 
@@ -67,12 +67,11 @@ bot.on('message:dice', async (ctx) => {
     }
   }
 
-  // Telegram Slot Machine Animation လှည့်နေစဉ် ၃.၃ စက္ကန့် await စောင့်မည်
-  await sleep(3300);
+  // Telegram Animation ရပ်ရန် ၃ စက္ကန့် စောင့်မည်
+  await sleep(3000);
 
   let replyText = '';
 
-  // 777 Jackpot (Value = 64)
   if (diceValue === 64) {
     const reward = 0.001;
     try {
@@ -93,8 +92,7 @@ bot.on('message:dice', async (ctx) => {
 
       replyText = `🎉 Congratulations ${displayName}!\nYou hit 777 Jackpot and received 0.001 GRAM!\nBalance = ${newBalance.toFixed(4)} GRAM💸\n\nMini 0.05 GRAM, 📢 @Rampage528`;
     } catch (error) {
-      console.error("Supabase Error:", error);
-      replyText = '⚠️ Database error. Please try again.';
+      replyText = `🎉 Congratulations ${displayName}!\nYou hit 777 Jackpot!\n\nMini 0.05 GRAM, 📢 @Rampage528`;
     }
   } else {
     try {
@@ -111,10 +109,9 @@ bot.on('message:dice', async (ctx) => {
     }
   }
 
-  // စာပြန်ပို့ခြင်း
   const sentMsg = await ctx.reply(replyText);
 
-  // ပို့ပြီးပါက ၄ စက္ကန့်အကြာတွင် ပြန်ဖျက်ပေးမည်
+  // စာပြန်ပို့ပြီး ၄ စက္ကန့်အကြာတွင် ပြန်ဖျက်မည်
   setTimeout(async () => {
     try {
       await ctx.api.deleteMessage(ctx.chat.id, sentMsg.message_id);
@@ -122,7 +119,7 @@ bot.on('message:dice', async (ctx) => {
   }, 4000);
 });
 
-// Vercel Express Handler
+// Vercel Express Adapter
 const handleWebhook = webhookCallback(bot, 'express');
 
 module.exports = async (req, res) => {
@@ -130,13 +127,9 @@ module.exports = async (req, res) => {
     try {
       await handleWebhook(req, res);
     } catch (err) {
-      console.error("Webhook error:", err);
-    }
-    if (!res.headersSent) {
-      res.status(200).send('OK');
+      console.error("Webhook processing error:", err);
     }
     return;
   }
-
-  return res.status(200).send('Bot Status: Active and Running!');
+  return res.status(200).send('Bot Status: Active');
 };

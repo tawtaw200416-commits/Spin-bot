@@ -1,4 +1,4 @@
-Const { Bot, webhookCallback } = require('grammy');
+const { Bot, webhookCallback } = require('grammy');
 const { createClient } = require('@supabase/supabase-js');
 
 // Supabase Configuration
@@ -89,9 +89,8 @@ bot.on('message:dice', async (ctx) => {
 
       let currentBalance = user ? parseFloat(user.balance || 0) : 0;
       
-      // JavaScript ဒသမပေါင်းစပ်မှု Error မဖြစ်အောင် ၁သန်းနဲ့မြှောက်၊ ဝိုင်းပြီးမှ ဒသမပြန်ခွဲပေးခြင်း
-      let rawNewBalance = currentBalance + reward;
-      let newBalance = Number(Math.round(rawNewBalance + 'e6') + 'e-6');
+      // ဒဿမ ပေါင်းရင် floating point error မတက်အောင် ပြင်ဆင်ထားသည့် နေရာဖြစ်ပါတယ်
+      let newBalance = Math.round((currentBalance + reward) * 100000) / 100000;
 
       await supabase.from('users').upsert({
         telegram_id: userId,
@@ -101,7 +100,7 @@ bot.on('message:dice', async (ctx) => {
 
       replyText = `🎉 <b>Congratulations ${displayName}!</b>\n` +
         `<b>You got ${winCombination.name} and received ${reward} GRAM!</b>\n` +
-        `<blockquote><b>Balance = <code>${newBalance.toFixed(6)} 💎</code></b></blockquote>\n` +
+        `<blockquote><b>Balance = <code>${newBalance.toFixed(4)} 💎</code></b></blockquote>\n` +
         `<b>Mini 0.05 GRAM💰,📢@Rampage528</b>`;
     } catch (error) {
       console.error("Supabase Error:", error);
@@ -120,7 +119,7 @@ bot.on('message:dice', async (ctx) => {
 
       let currentBalance = user ? parseFloat(user.balance || 0) : 0;
       replyText = `❌ <b>Try again ${displayName}! Better luck next time.</b>\n` +
-        `<blockquote><b>Balance = <code>${currentBalance.toFixed(6)} 💎</code></b></blockquote>\n` +
+        `<blockquote><b>Balance = <code>${currentBalance.toFixed(4)} 💎</code></b></blockquote>\n` +
         `<b>Mini 0.05 GRAM💰,📢@Rampage528</b>`;
     } catch (error) {
       replyText = `❌ <b>Try again ${displayName}! Better luck next time.</b>\n` +

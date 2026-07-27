@@ -89,8 +89,8 @@ bot.on('message:dice', async (ctx) => {
 
       let currentBalance = user ? parseFloat(user.balance || 0) : 0;
       
-      // ဒဿမ ပေါင်းရင် floating point error မတက်အောင် ပြင်ဆင်ထားသည့် နေရာဖြစ်ပါတယ်
-      let newBalance = Math.round((currentBalance + reward) * 100000) / 100000;
+      // Floating point error မတက်အောင် ပေါင်းတဲ့နေရာ အောက်ပါအတိုင်း ပြင်ထားပါတယ်
+      let newBalance = Math.round((currentBalance + reward) * 10000) / 10000;
 
       await supabase.from('users').upsert({
         telegram_id: userId,

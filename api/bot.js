@@ -9,7 +9,7 @@ const BOT_TOKEN = process.env.BOT_TOKEN || '8566391789:AAHxMWzB5EERqVAHI7Uf7rQod
 const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 const bot = new Bot(BOT_TOKEN);
 
-// Sleep Helper Function (Spin ရပ်သည်အထိ စောင့်ရန်)
+// Sleep Helper Function (Spin ရပ်သည်နှင့် ချက်ချင်းပေါ်စေရန် 1 စက္ကန့်သို့ လျှော့ချထားပါသည်)
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 // Error Handling
@@ -21,11 +21,14 @@ bot.catch((err) => {
 bot.command('start', async (ctx) => {
   const userId = ctx.from?.id;
   const rawUsername = ctx.from?.username || ctx.from?.first_name || `ID: ${userId}`;
-  const displayName = rawUsername.startsWith('@') ? rawUsername : (ctx.from?.username ? `@${rawUsername}` : rawUsername);
+  const displayName = ctx.from?.username ? `@${ctx.from.username}` : rawUsername;
 
-  const sent = await ctx.reply(
-    `Welcome ${displayName}! 🎰 Play Jackpot and earn rewards!\nBalance = 0.0000 GRAM💸\n\nMini 0.05 GRAM💰,📢@Rampage528`
-  );
+  const startMessage = `<b>Welcome ${displayName}! 🎰</b>\n` +
+    `<b>Play Jackpot and earn rewards!</b>\n` +
+    `<blockquote><b>Balance = <code>0.0000 GRAM</code>💸</b></blockquote>\n` +
+    `<b>Mini 0.05 GRAM💰,📢@Rampage528</b>`;
+
+  const sent = await ctx.reply(startMessage, { parse_mode: 'HTML' });
 
   // 5s ကြာလျှင် စာဖျက်မည်
   setTimeout(async () => {
@@ -52,8 +55,8 @@ bot.on('message:dice', async (ctx) => {
   const rawUsername = ctx.from.username || ctx.from.first_name || `ID: ${userId}`;
   const displayName = ctx.from.username ? `@${ctx.from.username}` : rawUsername;
 
-  // Telegram Slot Machine ရပ်သည်အထိ ၃.၃ စက္ကန့် စောင့်မည်
-  await sleep(3300);
+  // Spin Animation ရပ်သည်နှင့် စာချက်ချင်းပေါ်စေရန် 1000ms (1 စက္ကန့်) သာ စောင့်မည်
+  await sleep(1000);
 
   let replyText = '';
 
@@ -77,10 +80,15 @@ bot.on('message:dice', async (ctx) => {
         balance: newBalance
       });
 
-      replyText = `🎉 Congratulations ${displayName}!\nYou hit 777 Jackpot and received 0.001 GRAM!\nBalance = ${newBalance.toFixed(4)} GRAM💸\n\nMini 0.05 GRAM💰,📢@Rampage528`;
+      replyText = `🎉 <b>Congratulations ${displayName}!</b>\n` +
+        `<b>You hit 777 Jackpot and received 0.001 GRAM!</b>\n` +
+        `<blockquote><b>Balance = <code>${newBalance.toFixed(4)} GRAM</code>💸</b></blockquote>\n` +
+        `<b>Mini 0.05 GRAM💰,📢@Rampage528</b>`;
     } catch (error) {
       console.error("Supabase Error:", error);
-      replyText = `🎉 Congratulations ${displayName}!\nYou hit 777 Jackpot!\n\nMini 0.05 GRAM💰,📢@Rampage528`;
+      replyText = `🎉 <b>Congratulations ${displayName}!</b>\n` +
+        `<b>You hit 777 Jackpot!</b>\n` +
+        `<b>Mini 0.05 GRAM💰,📢@Rampage528</b>`;
     }
   } else {
     // 777 မကျပါက (လက်ရှိ Balance ပြသမည်)
@@ -92,16 +100,19 @@ bot.on('message:dice', async (ctx) => {
         .single();
 
       let currentBalance = user ? parseFloat(user.balance || 0) : 0;
-      replyText = `❌ Try again ${displayName}! Better luck next time.\nBalance = ${currentBalance.toFixed(4)} GRAM💸\n\nMini 0.05 GRAM💰,📢@Rampage528`;
+      replyText = `❌ <b>Try again ${displayName}! Better luck next time.</b>\n` +
+        `<blockquote><b>Balance = <code>${currentBalance.toFixed(4)} GRAM</code>💸</b></blockquote>\n` +
+        `<b>Mini 0.05 GRAM💰,📢@Rampage528</b>`;
     } catch (error) {
-      replyText = `❌ Try again ${displayName}! Better luck next time.\n\nMini 0.05 GRAM💰,📢@Rampage528`;
+      replyText = `❌ <b>Try again ${displayName}! Better luck next time.</b>\n` +
+        `<b>Mini 0.05 GRAM💰,📢@Rampage528</b>`;
     }
   }
 
-  // စာပြန်ပို့ခြင်း
-  const sentMsg = await ctx.reply(replyText);
+  // စာပြန်ပို့ခြင်း (parse_mode: 'HTML' ဖြင့် အထူနှင့် ဘောင်ပေါ်စေသည်)
+  const sentMsg = await ctx.reply(replyText, { parse_mode: 'HTML' });
 
-  // စာပို့ပြီး ၅ စက္ကန့်အကြာတွင် အလိုအလျောက် ပြန်ဖျက်မည်
+  // စာပို့ပြီး ၅ စက္ကန့် (5000ms) အကြာတွင် အလိုအလျောက် ပြန်ဖျက်မည်
   setTimeout(async () => {
     try {
       await ctx.api.deleteMessage(ctx.chat.id, sentMsg.message_id);

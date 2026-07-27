@@ -1,26 +1,28 @@
 const { Bot, webhookCallback } = require('grammy');
 const { createClient } = require('@supabase/supabase-js');
 
-// Vercel Environment Variables မှ ခေါ်သုံးမည် ( Hardcode ထည့်စရာမလိုတော့ပါ )
-const SUPABASE_URL = process.env.SUPABASE_URL || 'https://bysgzzqyubtgvdghldec.supabase.co';
-const SUPABASE_KEY = process.env.SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJ5c2d6enF5dWJ0Z3ZkZ2hsZGVjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzc5MzM4ODQsImV4cCI6MjA5MzUwOTg4NH0.-4JDl5X--fNYrRyuaOzyUXz0FaJpIxNSLLzcjGrlavQ';
+// Supabase Configuration (အသစ်ပြင်ဆင်ထားသော Credentials များ)
+const SUPABASE_URL = process.env.SUPABASE_URL || 'https://bncbaexhrofqslsfovow.supabase.co';
+const SUPABASE_KEY = process.env.SUPABASE_ANON_KEY || 'EyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJuY2JhZXhocm9mcXNsc2Zvdm93Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODUwMTQ2MTUsImV4cCI6MjEwMDU5MDYxNX0.BgwdnA1MnU9tgat8A_ULS25KRS-r_OkP-bO6KHPCQGA';
+
+// Telegram Bot Token
 const BOT_TOKEN = process.env.BOT_TOKEN || '8566391789:AAHxMWzB5EERqVAHI7Uf7rQodKzxVbv6SbM';
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 const bot = new Bot(BOT_TOKEN);
 
-// 1. /start command အတွက် ပြန်စာ
+// 1. /start Command
 bot.command('start', async (ctx) => {
   const username = ctx.from.username || ctx.from.first_name;
   await ctx.reply(`မင်္ဂလာပါ ${username}! 🎰 Slot Machine (Emoji) ကို ပို့ပြီး Spin ဆော့ကစားနိုင်ပါတယ်။ 777 ကျရင် GRAM ဆုငွေ ရရှိပါမည်!`);
 });
 
-// 2. /spin command အတွက် (Dice/Slot ရိုက်ထည့်ပေးမည်)
+// 2. /spin Command
 bot.command('spin', async (ctx) => {
   await ctx.replyWithDice('🎰');
 });
 
-// 3. Slot Machine Dice ကျလာပါက စစ်ဆေးမည့် အပိုင်း
+// 3. Slot Machine Dice ဂိမ်း အလုပ်လုပ်မည့် အပိုင်း
 bot.on('message:dice', async (ctx) => {
   if (ctx.message.dice.emoji !== '🎰') return;
 
@@ -58,5 +60,5 @@ bot.on('message:dice', async (ctx) => {
   }
 });
 
-// Vercel Serverless Function Compatibility
+// Vercel Webhook Handler
 module.exports = webhookCallback(bot, 'std/http');

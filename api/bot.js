@@ -31,12 +31,16 @@ const deleteMessageLater = (ctx, chatId, messageId, delay = 5000) => {
     await sleep(delay);
     try {
       await ctx.api.deleteMessage(chatId, messageId);
-    } catch (e) {}
+    } catch (e) {
+      console.error('Delete message failed:', e);
+    }
   })();
 
-  // Vercel Serverless Background Execution (If available)
+  // Vercel / GramJS execution context မဟုတ်ပါကလည်း ctx.state ထဲမှ waitUntil ကို ယူသုံးမည်
   if (ctx.waitUntil) {
     ctx.waitUntil(promise);
+  } else if (ctx.state && ctx.state.waitUntil) {
+    ctx.state.waitUntil(promise);
   }
 };
 
@@ -157,13 +161,14 @@ module.exports = async (req, res, context) => {
       const host = req.headers.host || 'spin-bot-ten.vercel.app';
       const url = `https://${host}${req.url}`;
       
+      // Vercel ရဲ့ Background Process ကို မပိတ်စေဘဲ စောင့်ခိုင်းရန် context.waitUntil ထည့်သွင်းခြင်း
       const response = await handleWebhook(
         new Request(url, {
           method: 'POST',
           headers: req.headers,
           body: typeof req.body === 'string' ? req.body : JSON.stringify(req.body || {}),
         }),
-        context
+        context && context.waitUntil ? context.waitUntil.bind(context) : undefined
       );
 
       res.status(response.status);

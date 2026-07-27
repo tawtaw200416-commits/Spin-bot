@@ -64,7 +64,7 @@ bot.command('spin', async (ctx) => {
 bot.on('message:dice', async (ctx) => {
   if (!ctx.message.dice || ctx.message.dice.emoji !== '🎰') return;
 
-  // Comment (Reply/Topic Message) မဟုတ်ရင် စာမပြန်ဘဲ ကျော်သွားမည်
+  // Channel Post ရဲ့ Comment (Reply) သို့မဟုတ် Discussion Topic ထဲမှာ မန့်မှသာ အောက်က Code များ ဆက်လုပ်မည်
   const isComment = ctx.message.reply_to_message || ctx.message.is_topic_message;
   if (!isComment) return;
 

@@ -1,4 +1,4 @@
-const { Bot, webhookCallback } = require('grammy');
+Const { Bot, webhookCallback } = require('grammy');
 const { createClient } = require('@supabase/supabase-js');
 
 // Supabase Configuration
@@ -31,12 +31,10 @@ const deleteMessageLater = (ctx, chatId, messageId, delay = 5000) => {
     await sleep(delay);
     try {
       await ctx.api.deleteMessage(chatId, messageId);
-    } catch (e) {
-      console.error("Message delete failed (Make sure bot is Admin):", e.message);
-    }
+    } catch (e) {}
   })();
 
-  // Vercel Serverless Background Execution
+  // Vercel Serverless Background Execution (If available)
   if (ctx.waitUntil) {
     ctx.waitUntil(promise);
   }
@@ -91,7 +89,7 @@ bot.on('message:dice', async (ctx) => {
 
       let currentBalance = user ? parseFloat(user.balance || 0) : 0;
       
-      // Floating Point Error မဖြစ်အောင် ၁သန်းနဲ့မြှောက်၊ ဝိုင်းပြီးမှ ဒသမပြန်ခွဲ ပေါင်းပေးခြင်း
+      // JavaScript ဒသမပေါင်းစပ်မှု Error မဖြစ်အောင် ၁သန်းနဲ့မြှောက်၊ ဝိုင်းပြီးမှ ဒသမပြန်ခွဲပေးခြင်း
       let rawNewBalance = currentBalance + reward;
       let newBalance = Number(Math.round(rawNewBalance + 'e6') + 'e-6');
 

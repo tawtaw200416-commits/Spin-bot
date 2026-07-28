@@ -12,11 +12,11 @@ const bot = new Bot(BOT_TOKEN);
 // Sleep Helper Function
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-// Slot Machine Rewards Mapping
+// Slot Machine Rewards Mapping (တောင်းဆိုထားသည့် ပမာဏများအတိုင်း ပြင်ဆင်ထားပါသည်)
 const SLOT_REWARDS = {
-  64: { reward: 0.001, name: '7 7 7' },
-  43: { reward: 0.0003, name: '🍫 🍫 🍫' },
-  22: { reward: 0.0002, name: '🍋 🍋 🍋' },
+  64: { reward: 0.001,  name: '7 7 7' },
+  43: { reward: 0.0005, name: '🍫 🍫 🍫' },
+  22: { reward: 0.0003, name: '🍋 🍋 🍋' },
   1:  { reward: 0.0001, name: '🍒 🍒 🍒' }
 };
 

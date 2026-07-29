@@ -1,4 +1,4 @@
-Const { Bot, webhookCallback } = require('grammy');
+const { Bot, webhookCallback } = require('grammy');
 const { createClient } = require('@supabase/supabase-js');
 
 // Supabase Configuration
@@ -66,13 +66,19 @@ bot.command('spin', async (ctx) => {
 // Main async logic handler for dice
 const handleDiceLogic = async (ctx) => {
   // 🎰 မဟုတ်ရင် အလုပ်မလုပ်ပါ
-  if (!ctx.message.dice || ctx.message.dice.emoji !== '🎰') return;
+  if (!ctx.message || !ctx.message.dice || ctx.message.dice.emoji !== '🎰') return;
 
-  // Channel Comment (Reply) ဟုတ်မဟုတ် စစ်ဆေးခြင်း
-  const isComment = ctx.message.reply_to_message || ctx.message.is_topic_message;
+  // Channel Comment (Reply), Topic သို့မဟုတ် DM ဟုတ်မဟုတ် တိကျစွာ စစ်ဆေးခြင်း
+  const isComment = ctx.message.reply_to_message || 
+                    ctx.message.is_topic_message || 
+                    ctx.message.message_thread_id || 
+                    ctx.chat.type === 'supergroup' || 
+                    ctx.chat.type === 'group' || 
+                    ctx.chat.type === 'private';
+                    
   if (!isComment) return;
 
-  const diceValue = ctx.message.dice.value;
+  const diceValue = Number(ctx.message.dice.value);
   const userId = ctx.from.id;
   
   const rawUsername = ctx.from.username || ctx.from.first_name || `ID: ${userId}`;
@@ -83,7 +89,7 @@ const handleDiceLogic = async (ctx) => {
 
   // အနိုင်ရ/မရ စစ်ဆေးခြင်း (SLOT_REWARDS ထဲမှာ diceValue ရှိမှသာ အနိုင်ရမည်)
   const winCombination = SLOT_REWARDS[diceValue];
-  const rewardAmount = winCombination ? winCombination.reward : 0;
+  const rewardAmount = winCombination ? Number(winCombination.reward) : 0;
 
   let finalBalance = 0;
 
@@ -95,7 +101,7 @@ const handleDiceLogic = async (ctx) => {
       p_amount: rewardAmount
     });
 
-    if (error) {
+    if (error || data === null) {
       // Fallback logic if RPC fails (မူလ Read & Upsert logic)
       let { data: user } = await supabase
         .from('users')
@@ -173,11 +179,13 @@ module.exports = async (req, res, context) => {
       const host = req.headers.host || 'spin-bot-ten.vercel.app';
       const url = `https://${host}${req.url}`;
       
+      const rawBody = typeof req.body === 'string' ? req.body : JSON.stringify(req.body || {});
+
       const response = await handleWebhook(
         new Request(url, {
           method: 'POST',
           headers: req.headers,
-          body: typeof req.body === 'string' ? req.body : JSON.stringify(req.body || {}),
+          body: rawBody,
         }),
         context && context.waitUntil ? context.waitUntil.bind(context) : undefined
       );

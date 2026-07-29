@@ -9,10 +9,10 @@ const BOT_TOKEN = process.env.BOT_TOKEN || '8566391789:AAHxMWzB5EERqVAHI7Uf7rQod
 const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 const bot = new Bot(BOT_TOKEN);
 
-// Sleep Helper Function
+// Helper function to handle delays safely
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-// Slot Machine Rewards Mapping (တောင်းဆိုထားသည့် ပမာဏများအတိုင်း ပြင်ဆင်ထားပါသည်)
+// Slot Machine Rewards Mapping
 const SLOT_REWARDS = {
   64: { reward: 0.001,  name: '7 7 7' },
   43: { reward: 0.0005, name: '🍫 🍫 🍫' },
@@ -25,18 +25,17 @@ bot.catch((err) => {
   console.error('Error in bot:', err);
 });
 
-// Delay ဖြင့် Background မှာ Message ဖျက်ပေးမည့် Helper Function
+// Delete message helper safely within serverless context
 const deleteMessageLater = (ctx, chatId, messageId, delay = 5000) => {
   const promise = (async () => {
     await sleep(delay);
     try {
       await ctx.api.deleteMessage(chatId, messageId);
     } catch (e) {
-      console.error('Delete message failed:', e);
+      // Ignore deletion errors (e.g. message already deleted or missing perms)
     }
   })();
 
-  // Vercel / GramJS execution context မဟုတ်ပါကလည်း ctx.state ထဲမှ waitUntil ကို ယူသုံးမည်
   if (ctx.waitUntil) {
     ctx.waitUntil(promise);
   } else if (ctx.state && ctx.state.waitUntil) {
@@ -66,11 +65,12 @@ bot.command('spin', async (ctx) => {
 
 // 3. Slot Machine Dice Handling
 bot.on('message:dice', async (ctx) => {
+  // 🎰 မဟုတ်ရင် အလုပ်မလုပ်ပါ
   if (!ctx.message.dice || ctx.message.dice.emoji !== '🎰') return;
 
   // Channel Comment (Reply) ဟုတ်မဟုတ် စစ်ဆေးခြင်း
   const isComment = ctx.message.reply_to_message || ctx.message.is_topic_message;
-  if (!isComment) return; // Comment မဟုတ်ရင် Balance မပေါင်းဘဲ ဒီအတိုင်း ထွက်သွားမည်
+  if (!isComment) return;
 
   const diceValue = ctx.message.dice.value;
   const userId = ctx.from.id;
@@ -78,64 +78,60 @@ bot.on('message:dice', async (ctx) => {
   const rawUsername = ctx.from.username || ctx.from.first_name || `ID: ${userId}`;
   const displayName = ctx.from.username ? `@${ctx.from.username}` : rawUsername;
 
-  // Spin Animation ရပ်သည်နှင့် စာချက်ချင်းပေါ်စေရန် 1s စောင့်မည်
-  await sleep(1000);
+  // Slot Animation ရပ်တန့်သည်အထိ ၂.၇ စက္ကန့် တိတိ စောင့်ပါမည်
+  await sleep(2700);
 
-  let replyText = '';
+  // အနိုင်ရ/မရ စစ်ဆေးခြင်း (SLOT_REWARDS ထဲမှာ diceValue ရှိမှသာ အနိုင်ရမည်)
   const winCombination = SLOT_REWARDS[diceValue];
+  const rewardAmount = winCombination ? winCombination.reward : 0;
 
-  if (winCombination) {
-    // အနိုင်ရရှိသည့် အကွက်ကျပါက
-    const reward = winCombination.reward;
+  let finalBalance = 0;
 
-    try {
-      let { data: user } = await supabase
-        .from('users')
-        .select('balance')
-        .eq('telegram_id', userId)
-        .single();
+  try {
+    // 1. လက်ရှိ User ၏ Balance ကို ရယူခြင်း
+    let { data: user, error: fetchErr } = await supabase
+      .from('users')
+      .select('balance')
+      .eq('telegram_id', userId)
+      .maybeSingle();
 
-      let currentBalance = user ? parseFloat(user.balance || 0) : 0;
-      
-      // ဒသမ မှန်အောင် ပေါင်းပေးမည့် စာကြောင်း
-      let newBalance = Math.round((currentBalance + reward) * 1000000) / 1000000;
+    let currentBalance = user && user.balance ? parseFloat(user.balance) : 0;
 
-      await supabase.from('users').upsert({
-        telegram_id: userId,
-        username: rawUsername,
-        balance: newBalance
-      });
-
-      replyText = `🎉 <b>Congratulations ${displayName}!</b>\n` +
-        `<b>You got ${winCombination.name} and received ${reward} GRAM!</b>\n` +
-        `<blockquote><b>Balance = <code>${newBalance.toFixed(6)} 💎</code></b></blockquote>\n` +
-        `<b>Mini 0.05 GRAM💰,📢@Rampage528</b>`;
-    } catch (error) {
-      console.error("Supabase Error:", error);
-      replyText = `🎉 <b>Congratulations ${displayName}!</b>\n` +
-        `<b>You got ${winCombination.name}!</b>\n` +
-        `<b>Mini 0.05 GRAM💰,📢@Rampage528</b>`;
+    // 2. အကယ်၍ အနိုင်ရမှသာ Balance တိုးပေးပါမည် (မနိုင်ပါက မပေါင်းပါ)
+    if (rewardAmount > 0) {
+      currentBalance = Math.round((currentBalance + rewardAmount) * 1000000) / 1000000;
     }
-  } else {
-    // မပေါက်ပါက (လက်ရှိ Balance ပြသမည်)
-    try {
-      let { data: user } = await supabase
-        .from('users')
-        .select('balance')
-        .eq('telegram_id', userId)
-        .single();
 
-      let currentBalance = user ? parseFloat(user.balance || 0) : 0;
-      replyText = `❌ <b>Try again ${displayName}! Better luck next time.</b>\n` +
-        `<blockquote><b>Balance = <code>${currentBalance.toFixed(6)} 💎</code></b></blockquote>\n` +
-        `<b>Mini 0.05 GRAM💰,📢@Rampage528</b>`;
-    } catch (error) {
-      replyText = `❌ <b>Try again ${displayName}! Better luck next time.</b>\n` +
-        `<b>Mini 0.05 GRAM💰,📢@Rampage528</b>`;
-    }
+    finalBalance = currentBalance;
+
+    // 3. Database သို့ Data အသစ် အမြဲတမ်း ပြန်လည် သိမ်းဆည်းခြင်း
+    await supabase.from('users').upsert({
+      telegram_id: userId,
+      username: rawUsername,
+      balance: finalBalance
+    }, { onConflict: 'telegram_id' });
+
+  } catch (error) {
+    console.error("Supabase Transaction Error:", error);
   }
 
-  // Comment ထဲမှာ စာမပျောက်ဘဲ မှန်မှန်ကန်ကန် ပြန်ပို့ပေးနိုင်ရန် message_thread_id ထည့်သွင်းခြင်း
+  // Telegram Message တည်ဆောက်ခြင်း
+  let replyText = '';
+
+  if (winCombination) {
+    // ပေါက်သည့်အကွက်များ (64, 43, 22, 1) ကျမှသာ အောက်ပါ စာသားထွက်မည်
+    replyText = `🎉 <b>Congratulations ${displayName}!</b>\n` +
+      `<b>You got ${winCombination.name} and received ${winCombination.reward} GRAM!</b>\n` +
+      `<blockquote><b>Balance = <code>${finalBalance.toFixed(6)} 💎</code></b></blockquote>\n` +
+      `<b>Mini 0.05 GRAM💰,📢@Rampage528</b>`;
+  } else {
+    // မပေါက်သည့် အကွက်များ (အကွက် ၆၀ ခန့်) အတွက် ဘာမှ မပေါင်းဘဲ လက်ရှိ Balance ကိုသာ ပြမည်
+    replyText = `❌ <b>Try again ${displayName}! Better luck next time.</b>\n` +
+      `<blockquote><b>Balance = <code>${finalBalance.toFixed(6)} 💎</code></b></blockquote>\n` +
+      `<b>Mini 0.05 GRAM💰,📢@Rampage528</b>`;
+  }
+
+  // Reply Options
   const replyOptions = { 
     parse_mode: 'HTML',
     reply_to_message_id: ctx.message.message_id
@@ -145,10 +141,8 @@ bot.on('message:dice', async (ctx) => {
     replyOptions.message_thread_id = ctx.message.message_thread_id;
   }
 
-  // စာပြန်ပို့ခြင်း
+  // စာပြန်ပို့ခြင်းနှင့် ခဏအကြာတွင် ဖျက်ခြင်း
   const sentMsg = await ctx.reply(replyText, replyOptions);
-
-  // ၅ စက္ကန့် စောင့်ပြီးမှ Auto Delete လုပ်ရန် Background သို့ လွှဲပေးမည်
   deleteMessageLater(ctx, ctx.chat.id, sentMsg.message_id, 5000);
 });
 
@@ -161,7 +155,6 @@ module.exports = async (req, res, context) => {
       const host = req.headers.host || 'spin-bot-ten.vercel.app';
       const url = `https://${host}${req.url}`;
       
-      // Vercel ရဲ့ Background Process ကို မပိတ်စေဘဲ စောင့်ခိုင်းရန် context.waitUntil ထည့်သွင်းခြင်း
       const response = await handleWebhook(
         new Request(url, {
           method: 'POST',

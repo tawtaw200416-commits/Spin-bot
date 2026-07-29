@@ -9,7 +9,7 @@ const BOT_TOKEN = process.env.BOT_TOKEN || '8566391789:AAHxMWzB5EERqVAHI7Uf7rQod
 const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 const bot = new Bot(BOT_TOKEN);
 
-// Helper function to handle delays safely
+// Safe delay helper
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 // Slot Machine Rewards Mapping
@@ -32,7 +32,7 @@ const deleteMessageLater = (ctx, chatId, messageId, delay = 5000) => {
     try {
       await ctx.api.deleteMessage(chatId, messageId);
     } catch (e) {
-      // Ignore deletion errors (e.g. message already deleted or missing perms)
+      // Ignore deletion errors
     }
   })();
 
@@ -63,9 +63,8 @@ bot.command('spin', async (ctx) => {
   await ctx.replyWithDice('🎰');
 });
 
-// 3. Main Slot Machine Background Processing Function
-const processDiceSpin = async (ctx) => {
-  // 🎰 မဟုတ်ရင် အလုပ်မလုပ်ပါ
+// 3. Slot Processing Core Function (Runs safely in Background)
+const handleDiceSpin = async (ctx) => {
   if (!ctx.message || !ctx.message.dice || ctx.message.dice.emoji !== '🎰') return;
 
   const diceValue = Number(ctx.message.dice.value);
@@ -77,15 +76,14 @@ const processDiceSpin = async (ctx) => {
   // Slot Animation ရပ်တန့်သည်အထိ ၂.၇ စက္ကန့် တိတိ စောင့်ပါမည်
   await sleep(2700);
 
-  // အနိုင်ရ/မရ စစ်ဆေးခြင်း
   const winCombination = SLOT_REWARDS[diceValue];
-  const rewardAmount = winCombination ? Number(winCombination.reward) : 0;
+  const rewardAmount = winCombination ? winCombination.reward : 0;
 
   let finalBalance = 0;
 
   try {
-    // 1. လက်ရှိ User ၏ Balance ကို ရယူခြင်း
-    let { data: user } = await supabase
+    // 1. Fetch current balance
+    const { data: user } = await supabase
       .from('users')
       .select('balance')
       .eq('telegram_id', userId)
@@ -93,14 +91,14 @@ const processDiceSpin = async (ctx) => {
 
     let currentBalance = user && user.balance ? parseFloat(user.balance) : 0;
 
-    // 2. ဒဿမ တိကျစွာ ပေါင်းခြင်း (100% Accurate Fixed Decimal Addition)
+    // 2. 100% Accurate Floating Precision Math (6 Decimal Places)
     if (rewardAmount > 0) {
       currentBalance = Math.round((currentBalance + rewardAmount) * 1000000) / 1000000;
     }
 
     finalBalance = currentBalance;
 
-    // 3. Database သို့ Data အသစ် အမြဲတမ်း ပြန်လည် သိမ်းဆည်းခြင်း
+    // 3. Database Sync
     await supabase.from('users').upsert({
       telegram_id: userId,
       username: rawUsername,
@@ -108,10 +106,10 @@ const processDiceSpin = async (ctx) => {
     }, { onConflict: 'telegram_id' });
 
   } catch (error) {
-    console.error("Supabase Transaction Error:", error);
+    console.error("Supabase Database Sync Error:", error);
   }
 
-  // Telegram Message တည်ဆောက်ခြင်း
+  // Telegram Reply Message Builder
   let replyText = '';
 
   if (winCombination) {
@@ -125,7 +123,7 @@ const processDiceSpin = async (ctx) => {
       `<b>Mini 0.05 GRAM💰,📢@Rampage528</b>`;
   }
 
-  // Reply Options
+  // Reply Options with full Topic/Comment Thread Support
   const replyOptions = { 
     parse_mode: 'HTML',
     reply_to_message_id: ctx.message.message_id
@@ -135,19 +133,20 @@ const processDiceSpin = async (ctx) => {
     replyOptions.message_thread_id = ctx.message.message_thread_id;
   }
 
-  // စာပြန်ပို့ခြင်းနှင့် ၅ စက္ကန့်အကြာတွင် ဖျက်ခြင်း
+  // Send Reply and Trigger Delete Timer
   const sentMsg = await ctx.reply(replyText, replyOptions);
   deleteMessageLater(ctx, ctx.chat.id, sentMsg.message_id, 5000);
 };
 
-// Slot Event Listener (High-Traffic Execution with Async Background Task)
+// Main Dice Event Listener
 bot.on('message:dice', (ctx) => {
-  const promise = processDiceSpin(ctx);
+  // Non-blocking processing execution using Vercel waitUntil context
+  const task = handleDiceSpin(ctx);
 
   if (ctx.waitUntil) {
-    ctx.waitUntil(promise);
+    ctx.waitUntil(task);
   } else if (ctx.state && ctx.state.waitUntil) {
-    ctx.state.waitUntil(promise);
+    ctx.state.waitUntil(task);
   }
 });
 

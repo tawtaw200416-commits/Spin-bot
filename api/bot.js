@@ -63,18 +63,25 @@ bot.command('spin', async (ctx) => {
   await ctx.replyWithDice('🎰');
 });
 
-// Spin တစ်ခုချင်းစီကို မြန်ဆန်တိကျစွာ စာပြန်ပေးမည့် Asynchronous Process
-const processSpin = async (ctx) => {
+// 3. Slot Machine Dice Handling
+bot.on('message:dice', async (ctx) => {
+  // 🎰 မဟုတ်ရင် အလုပ်မလုပ်ပါ
+  if (!ctx.message.dice || ctx.message.dice.emoji !== '🎰') return;
+
+  // Channel Comment (Reply) ဟုတ်မဟုတ် စစ်ဆေးခြင်း
+  const isComment = ctx.message.reply_to_message || ctx.message.is_topic_message || ctx.message.message_thread_id;
+  if (!isComment) return;
+
   const diceValue = ctx.message.dice.value;
   const userId = ctx.from.id;
   
   const rawUsername = ctx.from.username || ctx.from.first_name || `ID: ${userId}`;
   const displayName = ctx.from.username ? `@${ctx.from.username}` : rawUsername;
 
-  // Spin Animation ရပ်သည်နှင့် တန်းပြန်နိုင်ရန် စောင့်ချိန်ကို ၂.၂ စက္ကန့်သို့ လျှော့ချထားပါသည်
-  await sleep(2200);
+  // Slot Animation ရပ်တန့်သည်အထိ ၁.၈ စက္ကန့် စောင့်ပါမည် (တန်းပြန်စေရန် လျှော့ထားသည်)
+  await sleep(1800);
 
-  // အနိုင်ရ/မရ စစ်ဆေးခြင်း
+  // အနိုင်ရ/မရ စစ်ဆေးခြင်း (SLOT_REWARDS ထဲမှာ diceValue ရှိမှသာ အနိုင်ရမည်)
   const winCombination = SLOT_REWARDS[diceValue];
   const rewardAmount = winCombination ? winCombination.reward : 0;
 
@@ -82,7 +89,7 @@ const processSpin = async (ctx) => {
 
   try {
     // 1. လက်ရှိ User ၏ Balance ကို ရယူခြင်း
-    let { data: user } = await supabase
+    let { data: user, error: fetchErr } = await supabase
       .from('users')
       .select('balance')
       .eq('telegram_id', userId)
@@ -90,14 +97,14 @@ const processSpin = async (ctx) => {
 
     let currentBalance = user && user.balance ? parseFloat(user.balance) : 0;
 
-    // 2. ဒဿမ တိကျစွာ ပေါင်းစပ်ပေးခြင်း (Floating Point Error ကာကွယ်ထားသည်)
+    // 2. အကယ်၍ အနိုင်ရမှသာ Balance တိုးပေးပါမည် (ဒဿမ ၆ နေရာ တိကျစွာ ပေါင်းပေးမည်)
     if (rewardAmount > 0) {
       currentBalance = Number((currentBalance + rewardAmount).toFixed(6));
     }
 
     finalBalance = currentBalance;
 
-    // 3. Database သို့ အချက်အလက် မြန်ဆန်စွာ သိမ်းဆည်းခြင်း
+    // 3. Database သို့ Data အသစ် အမြဲတမ်း ပြန်လည် သိမ်းဆည်းခြင်း
     await supabase.from('users').upsert({
       telegram_id: userId,
       username: rawUsername,
@@ -112,11 +119,13 @@ const processSpin = async (ctx) => {
   let replyText = '';
 
   if (winCombination) {
+    // ပေါက်သည့်အကွက်များ (64, 43, 22, 1) ကျမှသာ အောက်ပါ စာသားထွက်မည်
     replyText = `🎉 <b>Congratulations ${displayName}!</b>\n` +
       `<b>You got ${winCombination.name} and received ${winCombination.reward} GRAM!</b>\n` +
       `<blockquote><b>Balance = <code>${finalBalance.toFixed(6)} 💎</code></b></blockquote>\n` +
       `<b>Mini 0.05 GRAM💰,📢@Rampage528</b>`;
   } else {
+    // မပေါက်သည့် အကွက်များ (အကွက် ၆၀ ခန့်) အတွက် ဘာမှ မပေါင်းဘဲ လက်ရှိ Balance ကိုသာ ပြမည်
     replyText = `❌ <b>Try again ${displayName}! Better luck next time.</b>\n` +
       `<blockquote><b>Balance = <code>${finalBalance.toFixed(6)} 💎</code></b></blockquote>\n` +
       `<b>Mini 0.05 GRAM💰,📢@Rampage528</b>`;
@@ -132,28 +141,9 @@ const processSpin = async (ctx) => {
     replyOptions.message_thread_id = ctx.message.message_thread_id;
   }
 
-  // စာပြန်ပို့ခြင်းနှင့် ၅ စက္ကန့်အကြာတွင် ဖျက်ခြင်း
+  // စာပြန်ပို့ခြင်းနှင့် ခဏအကြာတွင် ဖျက်ခြင်း
   const sentMsg = await ctx.reply(replyText, replyOptions);
   deleteMessageLater(ctx, ctx.chat.id, sentMsg.message_id, 5000);
-};
-
-// 3. Slot Machine Dice Handling
-bot.on('message:dice', (ctx) => {
-  // 🎰 မဟုတ်ရင် အလုပ်မလုပ်ပါ
-  if (!ctx.message || !ctx.message.dice || ctx.message.dice.emoji !== '🎰') return;
-
-  // Channel Comment (Reply) ဟုတ်မဟုတ် စစ်ဆေးခြင်း (မူရင်းအတိုင်း မပျက်ပါ)
-  const isComment = ctx.message.reply_to_message || ctx.message.is_topic_message || ctx.message.message_thread_id;
-  if (!isComment) return;
-
-  // လူများလာပါက တစ်ပြိုင်နက်တည်း တန်းစီမသွားဘဲ တစ်ယောက်စီအတွက် သီးသန့် အမြန်စာပြန်နိုင်ရန် Background Task ဖြင့် ချက်ချင်း ခေါ်ယူခြင်း
-  const task = processSpin(ctx);
-
-  if (ctx.waitUntil) {
-    ctx.waitUntil(task);
-  } else if (ctx.state && ctx.state.waitUntil) {
-    ctx.state.waitUntil(task);
-  }
 });
 
 // Vercel Serverless Native Handler

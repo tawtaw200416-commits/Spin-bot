@@ -12,7 +12,7 @@ const bot = new Bot(BOT_TOKEN);
 // Helper function to handle delays safely
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-// Slot Machine Rewards Mapping (သံပုရာသီးနှင့် ချောကလက် တန်ဖိုးများကို အမှန်အတိုင်း ပြင်ဆင်ထားသည်)
+// Slot Machine Rewards Mapping (တန်ဖိုးများကို အမှန်အတိုင်း သေချာပြင်ဆင်ထားသည်)
 const SLOT_REWARDS = {
   64: { reward: 0.001,  name: '7 7 7' },
   43: { reward: 0.0005, name: '🍫 🍫 🍫' },

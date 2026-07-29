@@ -6,24 +6,18 @@ const SUPABASE_URL = process.env.SUPABASE_URL || 'https://bncbaexhrofqslsfovow.s
 const SUPABASE_KEY = process.env.SUPABASE_ANON_KEY || 'Sb_publishable_i2ZbSs9hDGTOFSYOuhn6kg_dRTyZZC0';
 const BOT_TOKEN = process.env.BOT_TOKEN || '8566391789:AAHxMWzB5EERqVAHI7Uf7rQodKzxVbv6SbM';
 
-// Bot Owner ID
-const OWNER_ID = 1793453606;
-
 const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 const bot = new Bot(BOT_TOKEN);
-
-// Allowed Chat Cache (Performance မြှင့်ရန်)
-const allowedChats = new Set();
 
 // Helper function to handle delays safely
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-// Slot Machine Rewards Mapping (Micro Units: 1 GRAM = 1,000,000)
+// Slot Machine Rewards Mapping
 const SLOT_REWARDS = {
-  64: { reward: 0.001,  units: 1000n, name: '7 7 7' },
-  43: { reward: 0.0005, units: 500n,  name: '🍫 🍫 🍫' },
-  22: { reward: 0.0003, units: 300n,  name: '🍋 🍋 🍋' },
-  1:  { reward: 0.0001, units: 100n,  name: '🍒 🍒 🍒' }
+  64: { reward: 0.001,  name: '7 7 7' },
+  43: { reward: 0.0005, name: '🍫 🍫 🍫' },
+  22: { reward: 0.0003, name: '🍋 🍋 🍋' },
+  1:  { reward: 0.0001, name: '🍒 🍒 🍒' }
 };
 
 // Error Handling
@@ -38,7 +32,7 @@ const deleteMessageLater = (ctx, chatId, messageId, delay = 5000) => {
     try {
       await ctx.api.deleteMessage(chatId, messageId);
     } catch (e) {
-      // Ignore deletion errors
+      // Ignore deletion errors (e.g. message already deleted or missing perms)
     }
   })();
 
@@ -49,54 +43,9 @@ const deleteMessageLater = (ctx, chatId, messageId, delay = 5000) => {
   }
 };
 
-// Helper: Chat တစ်ခုအား Owner သုံးစွဲခွင့် ပေးထားခြင်း ရှိ/မရှိ စစ်ဆေးခြင်း
-const isChatAuthorized = async (chatId, senderId) => {
-  // ၁။ စာပို့သူသည် Owner ဖြစ်ပါက အလိုအလျောက် သုံးခွင့်ပေးပြီး Chat ID အား Cache တွင် မှတ်မည်
-  if (senderId === OWNER_ID) {
-    allowedChats.add(chatId);
-    return true;
-  }
-
-  // ၂။ Cache ထဲတွင် ရှိနေပြီးသား ဖြစ်ပါက Direct Allow လုပ်မည်
-  if (allowedChats.has(chatId)) {
-    return true;
-  }
-
-  // ၃။ Database မှ Chat အား Owner Activate လုပ်ထားသလား စစ်ဆေးမည်
-  try {
-    const { data } = await supabase
-      .from('authorized_chats')
-      .select('chat_id')
-      .eq('chat_id', chatId)
-      .maybeSingle();
-
-    if (data) {
-      allowedChats.add(chatId);
-      return true;
-    }
-  } catch (err) {
-    console.error("Auth check error:", err);
-  }
-
-  return false;
-};
-
 // 1. /start Command
 bot.command('start', async (ctx) => {
   const userId = ctx.from?.id;
-  const chatId = ctx.chat.id;
-
-  // Owner ဖြစ်ပါက ဒီ Group/Chat ကို Activated Group အဖြစ် DB မှာ မှတ်ပေးမည်
-  if (userId === OWNER_ID) {
-    allowedChats.add(chatId);
-    try {
-      await supabase.from('authorized_chats').upsert({ chat_id: chatId });
-    } catch (e) {}
-  }
-
-  const authorized = await isChatAuthorized(chatId, userId);
-  if (!authorized) return;
-
   const rawUsername = ctx.from?.username || ctx.from?.first_name || `ID: ${userId}`;
   const displayName = ctx.from?.username ? `@${ctx.from.username}` : rawUsername;
 
@@ -106,85 +55,77 @@ bot.command('start', async (ctx) => {
     `<b>Mini 0.05 GRAM💰,📢@Rampage528</b>`;
 
   const sent = await ctx.reply(startMessage, { parse_mode: 'HTML' });
-  deleteMessageLater(ctx, chatId, sent.message_id, 5000);
+  deleteMessageLater(ctx, ctx.chat.id, sent.message_id, 5000);
 });
 
 // 2. /spin Command
 bot.command('spin', async (ctx) => {
-  const authorized = await isChatAuthorized(ctx.chat.id, ctx.from?.id);
-  if (!authorized) return;
-
   await ctx.replyWithDice('🎰');
 });
 
-// 3. Slot Machine Dice Handling (Async Background Processing)
-const handleDiceLogic = async (ctx) => {
+// 3. Main Slot Machine Dice Processing Logic
+const processDiceSpin = async (ctx) => {
+  // 🎰 မဟုတ်ရင် အလုပ်မလုပ်ပါ
   if (!ctx.message || !ctx.message.dice || ctx.message.dice.emoji !== '🎰') return;
 
-  const chatId = ctx.chat.id;
+  const diceValue = ctx.message.dice.value;
   const userId = ctx.from.id;
-
-  // ဝင်ခွင့်ရှိသော Group ဖြစ်ကြောင်း စစ်ဆေးခြင်း
-  const authorized = await isChatAuthorized(chatId, userId);
-  if (!authorized) return;
-
-  const diceValue = Number(ctx.message.dice.value);
+  
   const rawUsername = ctx.from.username || ctx.from.first_name || `ID: ${userId}`;
   const displayName = ctx.from.username ? `@${ctx.from.username}` : rawUsername;
 
-  // Slot Animation အတွက် ၂.၇ စက္ကန့် စောင့်မည်
+  // Slot Animation ရပ်တန့်သည်အထိ ၂.၇ စက္ကန့် တိတိ စောင့်ပါမည်
   await sleep(2700);
 
+  // အနိုင်ရ/မရ စစ်ဆေးခြင်း
   const winCombination = SLOT_REWARDS[diceValue];
-  const rewardUnits = winCombination ? winCombination.units : 0n;
+  const rewardAmount = winCombination ? winCombination.reward : 0;
 
-  let finalBalanceFormatted = "0.000000";
+  let finalBalance = 0;
 
   try {
-    // ၁။ DB မှ လက်ရှိ Balance ရယူခြင်း
+    // ၁. လက်ရှိ User ၏ Balance ကို ရယူခြင်း
     let { data: user } = await supabase
       .from('users')
       .select('balance')
       .eq('telegram_id', userId)
       .maybeSingle();
 
-    let currentUnits = 0n;
-    if (user && user.balance) {
-      currentUnits = BigInt(Math.round(parseFloat(user.balance) * 1000000));
+    let currentBalance = user && user.balance ? parseFloat(user.balance) : 0;
+
+    // ၂. ဒဿမ တိကျစွာ ပေါင်းခြင်း (Fixed Decimal Accuracy)
+    if (rewardAmount > 0) {
+      currentBalance = Math.round((currentBalance + rewardAmount) * 1000000) / 1000000;
     }
 
-    // ၂။ တိကျစွာ ပေါင်းခြင်း (Micro Units ဖြင့် တွက်သည့်အတွက် Decimal Error လုံးဝ မရှိပါ)
-    if (rewardUnits > 0n) {
-      currentUnits += rewardUnits;
-    }
+    finalBalance = currentBalance;
 
-    const finalBalanceNum = Number(currentUnits) / 1000000;
-    finalBalanceFormatted = finalBalanceNum.toFixed(6);
-
-    // ၃။ DB သို့ ပြန်လည် သိမ်းဆည်းခြင်း
+    // ၃. Database သို့ Data အသစ် အမြဲတမ်း ပြန်လည် သိမ်းဆည်းခြင်း
     await supabase.from('users').upsert({
       telegram_id: userId,
       username: rawUsername,
-      balance: finalBalanceNum
+      balance: finalBalance
     }, { onConflict: 'telegram_id' });
 
   } catch (error) {
     console.error("Supabase Transaction Error:", error);
   }
 
-  // Telegram စာပြန်ပို့ရန် ပြင်ဆင်ခြင်း
+  // Telegram Message တည်ဆောက်ခြင်း
   let replyText = '';
+
   if (winCombination) {
     replyText = `🎉 <b>Congratulations ${displayName}!</b>\n` +
       `<b>You got ${winCombination.name} and received ${winCombination.reward} GRAM!</b>\n` +
-      `<blockquote><b>Balance = <code>${finalBalanceFormatted} 💎</code></b></blockquote>\n` +
+      `<blockquote><b>Balance = <code>${finalBalance.toFixed(6)} 💎</code></b></blockquote>\n` +
       `<b>Mini 0.05 GRAM💰,📢@Rampage528</b>`;
   } else {
     replyText = `❌ <b>Try again ${displayName}! Better luck next time.</b>\n` +
-      `<blockquote><b>Balance = <code>${finalBalanceFormatted} 💎</code></b></blockquote>\n` +
+      `<blockquote><b>Balance = <code>${finalBalance.toFixed(6)} 💎</code></b></blockquote>\n` +
       `<b>Mini 0.05 GRAM💰,📢@Rampage528</b>`;
   }
 
+  // Reply Options
   const replyOptions = { 
     parse_mode: 'HTML',
     reply_to_message_id: ctx.message.message_id
@@ -194,13 +135,14 @@ const handleDiceLogic = async (ctx) => {
     replyOptions.message_thread_id = ctx.message.message_thread_id;
   }
 
+  // စာပြန်ပို့ခြင်းနှင့် ၅ စက္ကန့်အကြာတွင် ဖျက်ခြင်း
   const sentMsg = await ctx.reply(replyText, replyOptions);
-  deleteMessageLater(ctx, chatId, sentMsg.message_id, 5000);
+  deleteMessageLater(ctx, ctx.chat.id, sentMsg.message_id, 5000);
 };
 
-// Non-blocking Concurrent Execution
+// Slot Machine Event Listener (Non-blocking Background Execution)
 bot.on('message:dice', (ctx) => {
-  const promise = handleDiceLogic(ctx);
+  const promise = processDiceSpin(ctx);
 
   if (ctx.waitUntil) {
     ctx.waitUntil(promise);
@@ -217,13 +159,12 @@ module.exports = async (req, res, context) => {
     try {
       const host = req.headers.host || 'spin-bot-ten.vercel.app';
       const url = `https://${host}${req.url}`;
-      const rawBody = typeof req.body === 'string' ? req.body : JSON.stringify(req.body || {});
-
+      
       const response = await handleWebhook(
         new Request(url, {
           method: 'POST',
           headers: req.headers,
-          body: rawBody,
+          body: typeof req.body === 'string' ? req.body : JSON.stringify(req.body || {}),
         }),
         context && context.waitUntil ? context.waitUntil.bind(context) : undefined
       );

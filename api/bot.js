@@ -12,7 +12,7 @@ const bot = new Bot(BOT_TOKEN);
 // Helper function to handle delays safely
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-// Slot Machine Rewards Mapping (Dice values & Emojis aligned properly)
+// Slot Machine Rewards Mapping (Telegram Dice Values Mapping)
 const SLOT_REWARDS = {
   64: { reward: 0.001,  name: '7 7 7' },
   43: { reward: 0.0005, name: '🍫 🍫 🍫' },
@@ -81,10 +81,12 @@ bot.on('message:dice', async (ctx) => {
   const winCombination = SLOT_REWARDS[diceValue];
   const rewardAmount = winCombination ? winCombination.reward : 0;
 
-  // DB update ကို Spin လှည့်နေစဉ်နောက်ကွယ်မှ အပြိုင်ခေါ်ယူခြင်း
-  const dbPromise = (async () => {
+  // Background Async Processing (လူများလာပါက တန်းစီ၍ တိကျစွာ အလုပ်လုပ်ရန်)
+  const processSpin = async () => {
     let finalBalance = 0;
+
     try {
+      // 1. လက်ရှိ User ၏ Balance ကို ရယူခြင်း
       let { data: user } = await supabase
         .from('users')
         .select('balance')
@@ -93,13 +95,14 @@ bot.on('message:dice', async (ctx) => {
 
       let currentBalance = user && user.balance ? parseFloat(user.balance) : 0;
 
+      // 2. ပေါက်ပါက Balance တိုးပေးခြင်း (ဒဿမ ၆ နေရာ အတိအကျ)
       if (rewardAmount > 0) {
-        // ပေးထားသော ပမာဏအတိုင်း တိကျစွာ ပေါင်းခြင်း
         currentBalance = Number((currentBalance + rewardAmount).toFixed(6));
       }
 
       finalBalance = currentBalance;
 
+      // 3. Supabase Database ထဲသို့ Update ပြန်လုပ်ခြင်း
       await supabase.from('users').upsert({
         telegram_id: userId,
         username: rawUsername,
@@ -109,42 +112,45 @@ bot.on('message:dice', async (ctx) => {
     } catch (error) {
       console.error("Supabase Transaction Error:", error);
     }
-    return finalBalance;
-  })();
 
-  // Slot Animation အတိအကျ ကွက်တိ ရပ်တန့်မည့်အချိန် (၂.၂ စက္ကန့်)
-  const [finalBalance] = await Promise.all([
-    dbPromise,
-    sleep(2200)
-  ]);
+    // 🎯 Slot Animation စက်လုံးဝ ရပ်သွားသည့် အချိန်အတိအကျ (၁.၈ စက္ကန့်)
+    await sleep(1800);
 
-  // Telegram Message တည်ဆောက်ခြင်း
-  let replyText = '';
+    // Telegram Message တည်ဆောက်ခြင်း
+    let replyText = '';
 
-  if (winCombination) {
-    replyText = `🎉 <b>Congratulations ${displayName}!</b>\n` +
-      `<b>You got ${winCombination.name} and received ${winCombination.reward} GRAM!</b>\n` +
-      `<blockquote><b>Balance = <code>${finalBalance.toFixed(6)} 💎</code></b></blockquote>\n` +
-      `<b>Mini 0.05 GRAM💰,📢@Rampage528</b>`;
-  } else {
-    replyText = `❌ <b>Try again ${displayName}! Better luck next time.</b>\n` +
-      `<blockquote><b>Balance = <code>${finalBalance.toFixed(6)} 💎</code></b></blockquote>\n` +
-      `<b>Mini 0.05 GRAM💰,📢@Rampage528</b>`;
-  }
+    if (winCombination) {
+      replyText = `🎉 <b>Congratulations ${displayName}!</b>\n` +
+        `<b>You got ${winCombination.name} and received ${winCombination.reward} GRAM!</b>\n` +
+        `<blockquote><b>Balance = <code>${finalBalance.toFixed(6)} 💎</code></b></blockquote>\n` +
+        `<b>Mini 0.05 GRAM💰,📢@Rampage528</b>`;
+    } else {
+      replyText = `❌ <b>Try again ${displayName}! Better luck next time.</b>\n` +
+        `<blockquote><b>Balance = <code>${finalBalance.toFixed(6)} 💎</code></b></blockquote>\n` +
+        `<b>Mini 0.05 GRAM💰,📢@Rampage528</b>`;
+    }
 
-  // Reply Options
-  const replyOptions = { 
-    parse_mode: 'HTML',
-    reply_to_message_id: ctx.message.message_id
+    // Reply Options
+    const replyOptions = { 
+      parse_mode: 'HTML',
+      reply_to_message_id: ctx.message.message_id
+    };
+    
+    if (ctx.message.message_thread_id) {
+      replyOptions.message_thread_id = ctx.message.message_thread_id;
+    }
+
+    // စာပြန်ပို့ခြင်းနှင့် ၅ စက္ကန့်အကြာတွင် ဖျက်ခြင်း
+    const sentMsg = await ctx.reply(replyText, replyOptions);
+    deleteMessageLater(ctx, ctx.chat.id, sentMsg.message_id, 5000);
   };
-  
-  if (ctx.message.message_thread_id) {
-    replyOptions.message_thread_id = ctx.message.message_thread_id;
-  }
 
-  // စာပြန်ပို့ခြင်းနှင့် ၅ စက္ကန့်အကြာတွင် ဖျက်ခြင်း
-  const sentMsg = await ctx.reply(replyText, replyOptions);
-  deleteMessageLater(ctx, ctx.chat.id, sentMsg.message_id, 5000);
+  // Vercel / Cloudflare Environment များတွင် Task ကျန်မခဲ့စေရန် waitUntil ဖြင့် စီမံခြင်း
+  if (ctx.waitUntil) {
+    ctx.waitUntil(processSpin());
+  } else {
+    await processSpin();
+  }
 });
 
 // Vercel Serverless Native Handler

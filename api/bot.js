@@ -32,7 +32,7 @@ const deleteMessageLater = (ctx, chatId, messageId, delay = 5000) => {
     try {
       await ctx.api.deleteMessage(chatId, messageId);
     } catch (e) {
-      // Ignore deletion errors
+      // Ignore deletion errors (e.g. message already deleted or missing perms)
     }
   })();
 
@@ -63,7 +63,7 @@ bot.command('spin', async (ctx) => {
   await ctx.replyWithDice('🎰');
 });
 
-// 3. Main Slot Processing Logic Function (Async Non-blocking)
+// 3. Main Slot Machine Background Processing Function
 const processDiceSpin = async (ctx) => {
   // 🎰 မဟုတ်ရင် အလုပ်မလုပ်ပါ
   if (!ctx.message || !ctx.message.dice || ctx.message.dice.emoji !== '🎰') return;
@@ -84,7 +84,7 @@ const processDiceSpin = async (ctx) => {
   let finalBalance = 0;
 
   try {
-    // ၁. လက်ရှိ User ၏ Balance ကို ရယူခြင်း
+    // 1. လက်ရှိ User ၏ Balance ကို ရယူခြင်း
     let { data: user } = await supabase
       .from('users')
       .select('balance')
@@ -93,14 +93,14 @@ const processDiceSpin = async (ctx) => {
 
     let currentBalance = user && user.balance ? parseFloat(user.balance) : 0;
 
-    // ၂. ဒဿမ တိကျစွာ ပေါင်းခြင်း ( Precision Fixed To 6 Decimals )
+    // 2. ဒဿမ တိကျစွာ ပေါင်းခြင်း (100% Accurate Fixed Decimal Addition)
     if (rewardAmount > 0) {
       currentBalance = Math.round((currentBalance + rewardAmount) * 1000000) / 1000000;
     }
 
     finalBalance = currentBalance;
 
-    // ၃. Database သို့ Data အသစ် အမြဲတမ်း ပြန်လည် သိမ်းဆည်းခြင်း
+    // 3. Database သို့ Data အသစ် အမြဲတမ်း ပြန်လည် သိမ်းဆည်းခြင်း
     await supabase.from('users').upsert({
       telegram_id: userId,
       username: rawUsername,
@@ -125,7 +125,7 @@ const processDiceSpin = async (ctx) => {
       `<b>Mini 0.05 GRAM💰,📢@Rampage528</b>`;
   }
 
-  // Reply Options (Dynamic thread and reply handle)
+  // Reply Options
   const replyOptions = { 
     parse_mode: 'HTML',
     reply_to_message_id: ctx.message.message_id
@@ -140,7 +140,7 @@ const processDiceSpin = async (ctx) => {
   deleteMessageLater(ctx, ctx.chat.id, sentMsg.message_id, 5000);
 };
 
-// Slot Event Listener (Always execution in background - 100% Guaranteed response)
+// Slot Event Listener (High-Traffic Execution with Async Background Task)
 bot.on('message:dice', (ctx) => {
   const promise = processDiceSpin(ctx);
 

@@ -12,7 +12,7 @@ const bot = new Bot(BOT_TOKEN);
 // Sleep Helper Function
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-// Telegram Slot Machine ၏ တရားဝင် Algorithm ဖြင့် ၃ ခုတန်းခြင်းကို အတိအကျ စစ်ဆေးပေးမည့် Function
+// Telegram Slot Machine ၏ ဘီး ၃ ခုကို အတိအကျ ခွဲထုတ်စစ်ဆေးမည့် Function
 const getSlotResult = (value) => {
   let v = value - 1;
   let r1 = v % 4;
@@ -28,7 +28,7 @@ const getSlotResult = (value) => {
       case 0: return { reward: 0.0001, name: '🍒 🍒 🍒' };    // Cherry -> 0.0001
     }
   }
-  return null; // ၃ ခု မတန်းပါက null ပြန်မည် (ဆုမရှိပါ)
+  return null; // ၃ ခု မတန်းပါက null ပြန်မည်
 };
 
 // Error Handling

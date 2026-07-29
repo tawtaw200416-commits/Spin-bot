@@ -63,7 +63,7 @@ bot.command('spin', async (ctx) => {
   await ctx.replyWithDice('🎰');
 });
 
-// Spin Logic ကို Background Task အဖြစ် တိကျစွာ လုပ်ဆောင်ပေးသည့် Function
+// Spin Logic ကို သီးသန့် asynchronous task အဖြစ် လုပ်ဆောင်ပေးသည်
 const processSpin = async (ctx) => {
   const diceValue = ctx.message.dice.value;
   const userId = ctx.from.id;
@@ -71,7 +71,7 @@ const processSpin = async (ctx) => {
   const rawUsername = ctx.from.username || ctx.from.first_name || `ID: ${userId}`;
   const displayName = ctx.from.username ? `@${ctx.from.username}` : rawUsername;
 
-  // Slot Animation ရပ်တန့်သည်အထိ ၂.၇ စက္ကန့် စောင့်ပါမည်
+  // Slot Animation ရပ်တန့်သည်အထိ ၂.၇ စက္ကန့် တိတိ စောင့်ပါမည်
   await sleep(2700);
 
   // အနိုင်ရ/မရ စစ်ဆေးခြင်း
@@ -90,14 +90,14 @@ const processSpin = async (ctx) => {
 
     let currentBalance = user && user.balance ? parseFloat(user.balance) : 0;
 
-    // 2. အကယ်၍ အနိုင်ရမှသာ Balance တိုးပေးပါမည် (ဒဿမ ၆ နေရာ တိကျစွာ ပေါင်းစပ်ပေးသည်)
+    // 2. အကယ်၍ အနိုင်ရမှသာ Balance တိုးပေးပါမည် (ဒဿမ ၆ နေရာ အတိအကျ ပေါင်းပေးသည်)
     if (rewardAmount > 0) {
       currentBalance = Number((currentBalance + rewardAmount).toFixed(6));
     }
 
     finalBalance = currentBalance;
 
-    // 3. Database သို့ Data အသစ် ပြန်လည် သိမ်းဆည်းခြင်း
+    // 3. Database သို့ Data အသစ် အမြဲတမ်း ပြန်လည် သိမ်းဆည်းခြင်း
     await supabase.from('users').upsert({
       telegram_id: userId,
       username: rawUsername,
@@ -142,7 +142,11 @@ bot.on('message:dice', (ctx) => {
   // 🎰 မဟုတ်ရင် အလုပ်မလုပ်ပါ
   if (!ctx.message || !ctx.message.dice || ctx.message.dice.emoji !== '🎰') return;
 
-  // Process ကို background သို့ ပို့ပေးခြင်းဖြင့် လူများသော်လည်း Vercel Timeout မဖြစ်စေဘဲ စာအမြဲပြန်နိုင်မည်
+  // Channel Comment (Reply) သို့မဟုတ် Discussion Topic ဟုတ်မဟုတ် စစ်ဆေးခြင်း (မူရင်း Logic မပျက်ပါ)
+  const isComment = ctx.message.reply_to_message || ctx.message.is_topic_message || ctx.message.message_thread_id;
+  if (!isComment) return;
+
+  // Background Task အဖြစ် စာပြန်စနစ်ကို တွန်းပို့ခြင်း (လူများလည်း စာမကျန်ဘဲ အမြဲပြန်နိုင်ရန်)
   const task = processSpin(ctx);
 
   if (ctx.waitUntil) {

@@ -63,25 +63,18 @@ bot.command('spin', async (ctx) => {
   await ctx.replyWithDice('🎰');
 });
 
-// 3. Slot Machine Dice Handling
-bot.on('message:dice', async (ctx) => {
-  // 🎰 မဟုတ်ရင် အလုပ်မလုပ်ပါ
-  if (!ctx.message.dice || ctx.message.dice.emoji !== '🎰') return;
-
-  // Channel/Group/Comment ဘယ်နေရာမှာပဲ Spin လှည့်လှည့် တိကျစွာ အလုပ်လုပ်ရန် ပြင်ဆင်ထားသော Filter
-  const isComment = ctx.message.reply_to_message || ctx.message.is_topic_message || ctx.message.message_thread_id || ctx.chat.type === 'supergroup' || ctx.chat.type === 'group';
-  if (!isComment) return;
-
+// Core Dice Processor Function
+const processDiceSpin = async (ctx) => {
   const diceValue = ctx.message.dice.value;
   const userId = ctx.from.id;
   
   const rawUsername = ctx.from.username || ctx.from.first_name || `ID: ${userId}`;
   const displayName = ctx.from.username ? `@${ctx.from.username}` : rawUsername;
 
-  // Slot Animation ရပ်တန့်သည်အထိ ၂.၇ စက္ကန့် တိတိ စောင့်ပါမည်
+  // Slot Animation ရပ်တန့်သည်အထိ ၂.၇ စက္ကန့် စောင့်ပါမည်
   await sleep(2700);
 
-  // အနိုင်ရ/မရ စစ်ဆေးခြင်း (SLOT_REWARDS ထဲမှာ diceValue ရှိမှသာ အနိုင်ရမည်)
+  // အနိုင်ရ/မရ စစ်ဆေးခြင်း
   const winCombination = SLOT_REWARDS[diceValue];
   const rewardAmount = winCombination ? winCombination.reward : 0;
 
@@ -89,7 +82,7 @@ bot.on('message:dice', async (ctx) => {
 
   try {
     // 1. လက်ရှိ User ၏ Balance ကို ရယူခြင်း
-    let { data: user, error: fetchErr } = await supabase
+    let { data: user } = await supabase
       .from('users')
       .select('balance')
       .eq('telegram_id', userId)
@@ -97,7 +90,7 @@ bot.on('message:dice', async (ctx) => {
 
     let currentBalance = user && user.balance ? parseFloat(user.balance) : 0;
 
-    // 2. အကယ်၍ အနိုင်ရမှသာ Balance တိုးပေးပါမည် (ဒဿမ ၆ နေရာ တိကျစွာ ပေါင်းခြင်း)
+    // 2. အကယ်၍ အနိုင်ရမှသာ Balance တိုးပေးပါမည် (ဒဿမ ၆ နေရာ တိကျစွာ ပေါင်းစပ်ပေးသည်)
     if (rewardAmount > 0) {
       currentBalance = Number((currentBalance + rewardAmount).toFixed(6));
     }
@@ -119,13 +112,11 @@ bot.on('message:dice', async (ctx) => {
   let replyText = '';
 
   if (winCombination) {
-    // ပေါက်သည့်အကွက်များ (64, 43, 22, 1) ကျမှသာ အောက်ပါ စာသားထွက်မည်
     replyText = `🎉 <b>Congratulations ${displayName}!</b>\n` +
       `<b>You got ${winCombination.name} and received ${winCombination.reward} GRAM!</b>\n` +
       `<blockquote><b>Balance = <code>${finalBalance.toFixed(6)} 💎</code></b></blockquote>\n` +
       `<b>Mini 0.05 GRAM💰,📢@Rampage528</b>`;
   } else {
-    // မပေါက်သည့် အကွက်များ (အကွက် ၆၀ ခန့်) အတွက် ဘာမှ မပေါင်းဘဲ လက်ရှိ Balance ကိုသာ ပြမည်
     replyText = `❌ <b>Try again ${displayName}! Better luck next time.</b>\n` +
       `<blockquote><b>Balance = <code>${finalBalance.toFixed(6)} 💎</code></b></blockquote>\n` +
       `<b>Mini 0.05 GRAM💰,📢@Rampage528</b>`;
@@ -144,6 +135,21 @@ bot.on('message:dice', async (ctx) => {
   // စာပြန်ပို့ခြင်းနှင့် ခဏအကြာတွင် ဖျက်ခြင်း
   const sentMsg = await ctx.reply(replyText, replyOptions);
   deleteMessageLater(ctx, ctx.chat.id, sentMsg.message_id, 5000);
+};
+
+// 3. Slot Machine Dice Handling
+bot.on('message:dice', (ctx) => {
+  // 🎰 မဟုတ်ရင် အလုပ်မလုပ်ပါ
+  if (!ctx.message || !ctx.message.dice || ctx.message.dice.emoji !== '🎰') return;
+
+  // Background Processing (Vercel Process မသေအောင် waitUntil နဲ့ ထိန်းပေးထားသည်)
+  const task = processDiceSpin(ctx);
+
+  if (ctx.waitUntil) {
+    ctx.waitUntil(task);
+  } else if (ctx.state && ctx.state.waitUntil) {
+    ctx.state.waitUntil(task);
+  }
 });
 
 // Vercel Serverless Native Handler

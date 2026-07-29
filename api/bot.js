@@ -1,4 +1,4 @@
-Const { Bot, webhookCallback } = require('grammy');
+const { Bot, webhookCallback } = require('grammy');
 const { createClient } = require('@supabase/supabase-js');
 
 // Supabase Configuration
@@ -68,11 +68,11 @@ const handleDiceLogic = async (ctx) => {
   // 🎰 မဟုတ်ရင် အလုပ်မလုပ်ပါ
   if (!ctx.message || !ctx.message.dice || ctx.message.dice.emoji !== '🎰') return;
 
-  // Channel Comment (Reply) သို့မဟုတ် Chat မက်ဆေ့ခ်ျ ဟုတ်မဟုတ် စစ်ဆေးခြင်း
+  // Channel Comment (Reply) သို့မဟုတ် အခြား Chat များ ဟုတ်မဟုတ် စစ်ဆေးခြင်း
   const isComment = ctx.message.reply_to_message || ctx.message.is_topic_message || ctx.chat.type === 'private' || ctx.chat.type === 'supergroup' || ctx.chat.type === 'group';
   if (!isComment) return;
 
-  const diceValue = ctx.message.dice.value;
+  const diceValue = Number(ctx.message.dice.value);
   const userId = ctx.from.id;
   
   const rawUsername = ctx.from.username || ctx.from.first_name || `ID: ${userId}`;
@@ -83,7 +83,7 @@ const handleDiceLogic = async (ctx) => {
 
   // အနိုင်ရ/မရ စစ်ဆေးခြင်း (SLOT_REWARDS ထဲမှာ diceValue ရှိမှသာ အနိုင်ရမည်)
   const winCombination = SLOT_REWARDS[diceValue];
-  const rewardAmount = winCombination ? winCombination.reward : 0;
+  const rewardAmount = winCombination ? Number(winCombination.reward) : 0;
 
   let finalBalance = 0;
 
@@ -173,13 +173,13 @@ module.exports = async (req, res, context) => {
       const host = req.headers.host || 'spin-bot-ten.vercel.app';
       const url = `https://${host}${req.url}`;
       
-      const bodyText = typeof req.body === 'string' ? req.body : JSON.stringify(req.body || {});
-
+      const rawBody = typeof req.body === 'string' ? req.body : JSON.stringify(req.body || {});
+      
       const response = await handleWebhook(
         new Request(url, {
           method: 'POST',
           headers: req.headers,
-          body: bodyText,
+          body: rawBody,
         }),
         context && context.waitUntil ? context.waitUntil.bind(context) : undefined
       );

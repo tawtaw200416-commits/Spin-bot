@@ -63,8 +63,8 @@ bot.command('spin', async (ctx) => {
   await ctx.replyWithDice('🎰');
 });
 
-// Core Dice Processor Function
-const processDiceSpin = async (ctx) => {
+// Spin Logic ကို Background Task အဖြစ် တိကျစွာ လုပ်ဆောင်ပေးသည့် Function
+const processSpin = async (ctx) => {
   const diceValue = ctx.message.dice.value;
   const userId = ctx.from.id;
   
@@ -97,7 +97,7 @@ const processDiceSpin = async (ctx) => {
 
     finalBalance = currentBalance;
 
-    // 3. Database သို့ Data အသစ် အမြဲတမ်း ပြန်လည် သိမ်းဆည်းခြင်း
+    // 3. Database သို့ Data အသစ် ပြန်လည် သိမ်းဆည်းခြင်း
     await supabase.from('users').upsert({
       telegram_id: userId,
       username: rawUsername,
@@ -132,7 +132,7 @@ const processDiceSpin = async (ctx) => {
     replyOptions.message_thread_id = ctx.message.message_thread_id;
   }
 
-  // စာပြန်ပို့ခြင်းနှင့် ခဏအကြာတွင် ဖျက်ခြင်း
+  // စာပြန်ပို့ခြင်းနှင့် ၅ စက္ကန့်အကြာတွင် ဖျက်ခြင်း
   const sentMsg = await ctx.reply(replyText, replyOptions);
   deleteMessageLater(ctx, ctx.chat.id, sentMsg.message_id, 5000);
 };
@@ -142,8 +142,8 @@ bot.on('message:dice', (ctx) => {
   // 🎰 မဟုတ်ရင် အလုပ်မလုပ်ပါ
   if (!ctx.message || !ctx.message.dice || ctx.message.dice.emoji !== '🎰') return;
 
-  // Background Processing (Vercel Process မသေအောင် waitUntil နဲ့ ထိန်းပေးထားသည်)
-  const task = processDiceSpin(ctx);
+  // Process ကို background သို့ ပို့ပေးခြင်းဖြင့် လူများသော်လည်း Vercel Timeout မဖြစ်စေဘဲ စာအမြဲပြန်နိုင်မည်
+  const task = processSpin(ctx);
 
   if (ctx.waitUntil) {
     ctx.waitUntil(task);

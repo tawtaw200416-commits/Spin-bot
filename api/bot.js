@@ -63,22 +63,16 @@ bot.command('spin', async (ctx) => {
   await ctx.replyWithDice('🎰');
 });
 
-// Main async logic handler for dice
-const handleDiceLogic = async (ctx) => {
+// 3. Slot Machine Dice Handling
+bot.on('message:dice', async (ctx) => {
   // 🎰 မဟုတ်ရင် အလုပ်မလုပ်ပါ
-  if (!ctx.message || !ctx.message.dice || ctx.message.dice.emoji !== '🎰') return;
+  if (!ctx.message.dice || ctx.message.dice.emoji !== '🎰') return;
 
-  // Channel Comment (Reply), Topic သို့မဟုတ် DM ဟုတ်မဟုတ် တိကျစွာ စစ်ဆေးခြင်း
-  const isComment = ctx.message.reply_to_message || 
-                    ctx.message.is_topic_message || 
-                    ctx.message.message_thread_id || 
-                    ctx.chat.type === 'supergroup' || 
-                    ctx.chat.type === 'group' || 
-                    ctx.chat.type === 'private';
-                    
+  // Channel Comment (Reply) ဟုတ်မဟုတ် စစ်ဆေးခြင်း
+  const isComment = ctx.message.reply_to_message || ctx.message.is_topic_message;
   if (!isComment) return;
 
-  const diceValue = Number(ctx.message.dice.value);
+  const diceValue = ctx.message.dice.value;
   const userId = ctx.from.id;
   
   const rawUsername = ctx.from.username || ctx.from.first_name || `ID: ${userId}`;
@@ -89,40 +83,33 @@ const handleDiceLogic = async (ctx) => {
 
   // အနိုင်ရ/မရ စစ်ဆေးခြင်း (SLOT_REWARDS ထဲမှာ diceValue ရှိမှသာ အနိုင်ရမည်)
   const winCombination = SLOT_REWARDS[diceValue];
-  const rewardAmount = winCombination ? Number(winCombination.reward) : 0;
+  const rewardAmount = winCombination ? winCombination.reward : 0;
 
   let finalBalance = 0;
 
   try {
-    // Supabase RPC မ်ားဖြင့် Atomic Update ပြုလုပ်ခြင်း
-    const { data, error } = await supabase.rpc('increment_user_balance', {
-      p_telegram_id: userId,
-      p_username: rawUsername,
-      p_amount: rewardAmount
-    });
+    // 1. လက်ရှိ User ၏ Balance ကို ရယူခြင်း
+    let { data: user, error: fetchErr } = await supabase
+      .from('users')
+      .select('balance')
+      .eq('telegram_id', userId)
+      .maybeSingle();
 
-    if (error || data === null) {
-      // Fallback logic if RPC fails (မူလ Read & Upsert logic)
-      let { data: user } = await supabase
-        .from('users')
-        .select('balance')
-        .eq('telegram_id', userId)
-        .maybeSingle();
+    let currentBalance = user && user.balance ? parseFloat(user.balance) : 0;
 
-      let currentBalance = user && user.balance ? parseFloat(user.balance) : 0;
-      if (rewardAmount > 0) {
-        currentBalance = Math.round((currentBalance + rewardAmount) * 1000000) / 1000000;
-      }
-      finalBalance = currentBalance;
-
-      await supabase.from('users').upsert({
-        telegram_id: userId,
-        username: rawUsername,
-        balance: finalBalance
-      }, { onConflict: 'telegram_id' });
-    } else {
-      finalBalance = parseFloat(data || 0);
+    // 2. အကယ်၍ အနိုင်ရမှသာ Balance တိုးပေးပါမည် (မနိုင်ပါက မပေါင်းပါ)
+    if (rewardAmount > 0) {
+      currentBalance = Math.round((currentBalance + rewardAmount) * 1000000) / 1000000;
     }
+
+    finalBalance = currentBalance;
+
+    // 3. Database သို့ Data အသစ် အမြဲတမ်း ပြန်လည် သိမ်းဆည်းခြင်း
+    await supabase.from('users').upsert({
+      telegram_id: userId,
+      username: rawUsername,
+      balance: finalBalance
+    }, { onConflict: 'telegram_id' });
 
   } catch (error) {
     console.error("Supabase Transaction Error:", error);
@@ -157,17 +144,6 @@ const handleDiceLogic = async (ctx) => {
   // စာပြန်ပို့ခြင်းနှင့် ခဏအကြာတွင် ဖျက်ခြင်း
   const sentMsg = await ctx.reply(replyText, replyOptions);
   deleteMessageLater(ctx, ctx.chat.id, sentMsg.message_id, 5000);
-};
-
-// 3. Slot Machine Dice Handling (Non-blocking background execution)
-bot.on('message:dice', (ctx) => {
-  const promise = handleDiceLogic(ctx);
-
-  if (ctx.waitUntil) {
-    ctx.waitUntil(promise);
-  } else if (ctx.state && ctx.state.waitUntil) {
-    ctx.state.waitUntil(promise);
-  }
 });
 
 // Vercel Serverless Native Handler
@@ -179,13 +155,11 @@ module.exports = async (req, res, context) => {
       const host = req.headers.host || 'spin-bot-ten.vercel.app';
       const url = `https://${host}${req.url}`;
       
-      const rawBody = typeof req.body === 'string' ? req.body : JSON.stringify(req.body || {});
-
       const response = await handleWebhook(
         new Request(url, {
           method: 'POST',
           headers: req.headers,
-          body: rawBody,
+          body: typeof req.body === 'string' ? req.body : JSON.stringify(req.body || {}),
         }),
         context && context.waitUntil ? context.waitUntil.bind(context) : undefined
       );

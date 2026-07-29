@@ -1,4 +1,4 @@
-const { Bot, webhookCallback } = require('grammy');
+Const { Bot, webhookCallback } = require('grammy');
 const { createClient } = require('@supabase/supabase-js');
 
 // Supabase Configuration
@@ -54,7 +54,8 @@ bot.command('start', async (ctx) => {
     `<blockquote><b>Balance = <code>0.0000 💎</code></b></blockquote>\n` +
     `<b>Mini 0.05 GRAM💰,📢@Rampage528</b>`;
 
-  await ctx.reply(startMessage, { parse_mode: 'HTML' });
+  const sent = await ctx.reply(startMessage, { parse_mode: 'HTML' });
+  deleteMessageLater(ctx, ctx.chat.id, sent.message_id, 5000);
 });
 
 // 2. /spin Command
@@ -66,6 +67,10 @@ bot.command('spin', async (ctx) => {
 const handleDiceLogic = async (ctx) => {
   // 🎰 မဟုတ်ရင် အလုပ်မလုပ်ပါ
   if (!ctx.message || !ctx.message.dice || ctx.message.dice.emoji !== '🎰') return;
+
+  // Channel Comment (Reply) သို့မဟုတ် Chat မက်ဆေ့ခ်ျ ဟုတ်မဟုတ် စစ်ဆေးခြင်း
+  const isComment = ctx.message.reply_to_message || ctx.message.is_topic_message || ctx.chat.type === 'private' || ctx.chat.type === 'supergroup' || ctx.chat.type === 'group';
+  if (!isComment) return;
 
   const diceValue = ctx.message.dice.value;
   const userId = ctx.from.id;
@@ -98,7 +103,7 @@ const handleDiceLogic = async (ctx) => {
         .eq('telegram_id', userId)
         .maybeSingle();
 
-      let currentBalance = user && user.balance ? Number(user.balance) : 0;
+      let currentBalance = user && user.balance ? parseFloat(user.balance) : 0;
       if (rewardAmount > 0) {
         currentBalance = Math.round((currentBalance + rewardAmount) * 1000000) / 1000000;
       }
@@ -110,7 +115,7 @@ const handleDiceLogic = async (ctx) => {
         balance: finalBalance
       }, { onConflict: 'telegram_id' });
     } else {
-      finalBalance = Number(data || 0);
+      finalBalance = parseFloat(data || 0);
     }
 
   } catch (error) {
@@ -143,8 +148,9 @@ const handleDiceLogic = async (ctx) => {
     replyOptions.message_thread_id = ctx.message.message_thread_id;
   }
 
-  // စာပြန်ပို့ခြင်း (မဖျက်ဘဲ အမြဲတမ်း ကျန်နေပါမည်)
-  await ctx.reply(replyText, replyOptions);
+  // စာပြန်ပို့ခြင်းနှင့် ခဏအကြာတွင် ဖျက်ခြင်း
+  const sentMsg = await ctx.reply(replyText, replyOptions);
+  deleteMessageLater(ctx, ctx.chat.id, sentMsg.message_id, 5000);
 };
 
 // 3. Slot Machine Dice Handling (Non-blocking background execution)
@@ -167,11 +173,13 @@ module.exports = async (req, res, context) => {
       const host = req.headers.host || 'spin-bot-ten.vercel.app';
       const url = `https://${host}${req.url}`;
       
+      const bodyText = typeof req.body === 'string' ? req.body : JSON.stringify(req.body || {});
+
       const response = await handleWebhook(
         new Request(url, {
           method: 'POST',
           headers: req.headers,
-          body: typeof req.body === 'string' ? req.body : JSON.stringify(req.body || {}),
+          body: bodyText,
         }),
         context && context.waitUntil ? context.waitUntil.bind(context) : undefined
       );

@@ -54,8 +54,7 @@ bot.command('start', async (ctx) => {
     `<blockquote><b>Balance = <code>0.0000 💎</code></b></blockquote>\n` +
     `<b>Mini 0.05 GRAM💰,📢@Rampage528</b>`;
 
-  const sent = await ctx.reply(startMessage, { parse_mode: 'HTML' });
-  deleteMessageLater(ctx, ctx.chat.id, sent.message_id, 5000);
+  await ctx.reply(startMessage, { parse_mode: 'HTML' });
 });
 
 // 2. /spin Command
@@ -95,7 +94,7 @@ const handleDiceLogic = async (ctx) => {
       p_amount: rewardAmount
     });
 
-    if (error) {
+    if (error || data === null) {
       // Fallback logic if RPC fails (မူလ Read & Upsert logic)
       let { data: user } = await supabase
         .from('users')
@@ -103,11 +102,8 @@ const handleDiceLogic = async (ctx) => {
         .eq('telegram_id', userId)
         .maybeSingle();
 
-      let currentBalance = user && user.balance ? parseFloat(user.balance) : 0;
-      if (rewardAmount > 0) {
-        currentBalance = Math.round((currentBalance + rewardAmount) * 1000000) / 1000000;
-      }
-      finalBalance = currentBalance;
+      let currentBalance = user && user.balance ? Number(user.balance) : 0;
+      finalBalance = currentBalance + Number(rewardAmount);
 
       await supabase.from('users').upsert({
         telegram_id: userId,
@@ -115,7 +111,7 @@ const handleDiceLogic = async (ctx) => {
         balance: finalBalance
       }, { onConflict: 'telegram_id' });
     } else {
-      finalBalance = parseFloat(data || 0);
+      finalBalance = Number(data);
     }
 
   } catch (error) {
@@ -148,9 +144,8 @@ const handleDiceLogic = async (ctx) => {
     replyOptions.message_thread_id = ctx.message.message_thread_id;
   }
 
-  // စာပြန်ပို့ခြင်းနှင့် ခဏအကြာတွင် ဖျက်ခြင်း
-  const sentMsg = await ctx.reply(replyText, replyOptions);
-  deleteMessageLater(ctx, ctx.chat.id, sentMsg.message_id, 5000);
+  // စာပြန်ပို့ခြင်း (မဖျက်ဘဲ အမြဲတမ်း ကျန်နေပါမည်)
+  await ctx.reply(replyText, replyOptions);
 };
 
 // 3. Slot Machine Dice Handling (Non-blocking background execution)
@@ -173,18 +168,17 @@ module.exports = async (req, res, context) => {
       const host = req.headers.host || 'spin-bot-ten.vercel.app';
       const url = `https://${host}${req.url}`;
       
-      const response = await handleWebhook(
-        new Request(url, {
-          method: 'POST',
-          headers: req.headers,
-          body: typeof req.body === 'string' ? req.body : JSON.stringify(req.body || {}),
-        }),
-        context && context.waitUntil ? context.waitUntil.bind(context) : undefined
-      );
+      const request = new Request(url, {
+        method: 'POST',
+        headers: req.headers,
+        body: typeof req.body === 'string' ? req.body : JSON.stringify(req.body || {}),
+      });
 
-      res.status(response.status);
-      const text = await response.text();
-      return res.send(text);
+      // Background Processing လုပ်ခိုင်းပြီး Response ကို ချက်ချင်း OK ပို့ပေးမည် (Lag-Free)
+      handleWebhook(request, context && context.waitUntil ? context.waitUntil.bind(context) : undefined)
+        .catch((err) => console.error("Webhook processing error:", err));
+
+      return res.status(200).send('OK');
     } catch (err) {
       console.error("Webhook processing error:", err);
       return res.status(200).send('OK');

@@ -9,7 +9,7 @@ const BOT_TOKEN = process.env.BOT_TOKEN || '8566391789:AAHxMWzB5EERqVAHI7Uf7rQod
 const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 const bot = new Bot(BOT_TOKEN);
 
-// Safe delay helper
+// Helper function to handle delays safely
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 // Slot Machine Rewards Mapping
@@ -32,7 +32,7 @@ const deleteMessageLater = (ctx, chatId, messageId, delay = 5000) => {
     try {
       await ctx.api.deleteMessage(chatId, messageId);
     } catch (e) {
-      // Ignore deletion errors
+      // Ignore deletion errors (e.g. message already deleted or missing perms)
     }
   })();
 
@@ -63,11 +63,16 @@ bot.command('spin', async (ctx) => {
   await ctx.replyWithDice('🎰');
 });
 
-// 3. Slot Processing Core Function (Runs safely in Background)
-const handleDiceSpin = async (ctx) => {
-  if (!ctx.message || !ctx.message.dice || ctx.message.dice.emoji !== '🎰') return;
+// 3. Slot Machine Dice Handling
+bot.on('message:dice', async (ctx) => {
+  // 🎰 မဟုတ်ရင် အလုပ်မလုပ်ပါ
+  if (!ctx.message.dice || ctx.message.dice.emoji !== '🎰') return;
 
-  const diceValue = Number(ctx.message.dice.value);
+  // Channel/Group/Comment ဘယ်နေရာမှာပဲ Spin လှည့်လှည့် တိကျစွာ အလုပ်လုပ်ရန် ပြင်ဆင်ထားသော Filter
+  const isComment = ctx.message.reply_to_message || ctx.message.is_topic_message || ctx.message.message_thread_id || ctx.chat.type === 'supergroup' || ctx.chat.type === 'group';
+  if (!isComment) return;
+
+  const diceValue = ctx.message.dice.value;
   const userId = ctx.from.id;
   
   const rawUsername = ctx.from.username || ctx.from.first_name || `ID: ${userId}`;
@@ -76,14 +81,15 @@ const handleDiceSpin = async (ctx) => {
   // Slot Animation ရပ်တန့်သည်အထိ ၂.၇ စက္ကန့် တိတိ စောင့်ပါမည်
   await sleep(2700);
 
+  // အနိုင်ရ/မရ စစ်ဆေးခြင်း (SLOT_REWARDS ထဲမှာ diceValue ရှိမှသာ အနိုင်ရမည်)
   const winCombination = SLOT_REWARDS[diceValue];
   const rewardAmount = winCombination ? winCombination.reward : 0;
 
   let finalBalance = 0;
 
   try {
-    // 1. Fetch current balance
-    const { data: user } = await supabase
+    // 1. လက်ရှိ User ၏ Balance ကို ရယူခြင်း
+    let { data: user, error: fetchErr } = await supabase
       .from('users')
       .select('balance')
       .eq('telegram_id', userId)
@@ -91,14 +97,14 @@ const handleDiceSpin = async (ctx) => {
 
     let currentBalance = user && user.balance ? parseFloat(user.balance) : 0;
 
-    // 2. 100% Accurate Floating Precision Math (6 Decimal Places)
+    // 2. အကယ်၍ အနိုင်ရမှသာ Balance တိုးပေးပါမည် (ဒဿမ ၆ နေရာ တိကျစွာ ပေါင်းခြင်း)
     if (rewardAmount > 0) {
-      currentBalance = Math.round((currentBalance + rewardAmount) * 1000000) / 1000000;
+      currentBalance = Number((currentBalance + rewardAmount).toFixed(6));
     }
 
     finalBalance = currentBalance;
 
-    // 3. Database Sync
+    // 3. Database သို့ Data အသစ် အမြဲတမ်း ပြန်လည် သိမ်းဆည်းခြင်း
     await supabase.from('users').upsert({
       telegram_id: userId,
       username: rawUsername,
@@ -106,24 +112,26 @@ const handleDiceSpin = async (ctx) => {
     }, { onConflict: 'telegram_id' });
 
   } catch (error) {
-    console.error("Supabase Database Sync Error:", error);
+    console.error("Supabase Transaction Error:", error);
   }
 
-  // Telegram Reply Message Builder
+  // Telegram Message တည်ဆောက်ခြင်း
   let replyText = '';
 
   if (winCombination) {
+    // ပေါက်သည့်အကွက်များ (64, 43, 22, 1) ကျမှသာ အောက်ပါ စာသားထွက်မည်
     replyText = `🎉 <b>Congratulations ${displayName}!</b>\n` +
       `<b>You got ${winCombination.name} and received ${winCombination.reward} GRAM!</b>\n` +
       `<blockquote><b>Balance = <code>${finalBalance.toFixed(6)} 💎</code></b></blockquote>\n` +
       `<b>Mini 0.05 GRAM💰,📢@Rampage528</b>`;
   } else {
+    // မပေါက်သည့် အကွက်များ (အကွက် ၆၀ ခန့်) အတွက် ဘာမှ မပေါင်းဘဲ လက်ရှိ Balance ကိုသာ ပြမည်
     replyText = `❌ <b>Try again ${displayName}! Better luck next time.</b>\n` +
       `<blockquote><b>Balance = <code>${finalBalance.toFixed(6)} 💎</code></b></blockquote>\n` +
       `<b>Mini 0.05 GRAM💰,📢@Rampage528</b>`;
   }
 
-  // Reply Options with full Topic/Comment Thread Support
+  // Reply Options
   const replyOptions = { 
     parse_mode: 'HTML',
     reply_to_message_id: ctx.message.message_id
@@ -133,21 +141,9 @@ const handleDiceSpin = async (ctx) => {
     replyOptions.message_thread_id = ctx.message.message_thread_id;
   }
 
-  // Send Reply and Trigger Delete Timer
+  // စာပြန်ပို့ခြင်းနှင့် ခဏအကြာတွင် ဖျက်ခြင်း
   const sentMsg = await ctx.reply(replyText, replyOptions);
   deleteMessageLater(ctx, ctx.chat.id, sentMsg.message_id, 5000);
-};
-
-// Main Dice Event Listener
-bot.on('message:dice', (ctx) => {
-  // Non-blocking processing execution using Vercel waitUntil context
-  const task = handleDiceSpin(ctx);
-
-  if (ctx.waitUntil) {
-    ctx.waitUntil(task);
-  } else if (ctx.state && ctx.state.waitUntil) {
-    ctx.state.waitUntil(task);
-  }
 });
 
 // Vercel Serverless Native Handler

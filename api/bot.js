@@ -6,7 +6,7 @@ const SUPABASE_URL = process.env.SUPABASE_URL || 'https://bncbaexhrofqslsfovow.s
 const SUPABASE_KEY = process.env.SUPABASE_ANON_KEY || 'Sb_publishable_i2ZbSs9hDGTOFSYOuhn6kg_dRTyZZC0';
 const BOT_TOKEN = process.env.BOT_TOKEN || '8566391789:AAHxMWzB5EERqVAHI7Uf7rQodKzxVbv6SbM';
 
-// Owner ID Configuration
+// Bot Owner ID
 const OWNER_ID = 1793453606;
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
@@ -46,14 +46,27 @@ const deleteMessageLater = (ctx, chatId, messageId, delay = 5000) => {
   }
 };
 
+// Helper: Owner ရှိ/မရှိ စစ်ဆေးသည့် Function
+const isOwnerInChat = async (ctx) => {
+  // DM (Private Chat) ဆိုလျှင် Owner ဖြစ်မှ ရမည်
+  if (ctx.chat.type === 'private') {
+    return ctx.from?.id === OWNER_ID;
+  }
+
+  // Group / Supergroup / Channel Thread များတွင် Owner Member အဖြစ် ရှိမရှိ စစ်ဆေးခြင်း
+  try {
+    const member = await ctx.api.getChatMember(ctx.chat.id, OWNER_ID);
+    return ['creator', 'administrator', 'member'].includes(member.status);
+  } catch (err) {
+    // Owner မရှိပါက သို့မဟုတ် Error တက်ပါက false ပြန်မည်
+    return false;
+  }
+};
+
 // 1. /start Command
 bot.command('start', async (ctx) => {
-  // Owner ID စစ်ဆေးခြင်း
-  if (ctx.from?.id !== OWNER_ID) {
-    const unauthorizedMsg = await ctx.reply("❌ **Access Denied!** This bot is restricted to the owner only.");
-    deleteMessageLater(ctx, ctx.chat.id, unauthorizedMsg.message_id, 5000);
-    return;
-  }
+  const hasAccess = await isOwnerInChat(ctx);
+  if (!hasAccess) return;
 
   const userId = ctx.from?.id;
   const rawUsername = ctx.from?.username || ctx.from?.first_name || `ID: ${userId}`;
@@ -70,19 +83,18 @@ bot.command('start', async (ctx) => {
 
 // 2. /spin Command
 bot.command('spin', async (ctx) => {
-  if (ctx.from?.id !== OWNER_ID) return;
+  const hasAccess = await isOwnerInChat(ctx);
+  if (!hasAccess) return;
+
   await ctx.replyWithDice('🎰');
 });
 
-// Main async logic handler for dice (Async Non-blocking for high traffic)
+// Main async logic handler for dice
 const handleDiceLogic = async (ctx) => {
-  // Owner စစ်ဆေးခြင်း
-  if (ctx.from?.id !== OWNER_ID) return;
-
   // 🎰 မဟုတ်ရင် အလုပ်မလုပ်ပါ
   if (!ctx.message || !ctx.message.dice || ctx.message.dice.emoji !== '🎰') return;
 
-  // Channel Comment (Reply), Topic သို့မဟုတ် DM စစ်ဆေးခြင်း
+  // Channel Comment (Reply), Topic သို့မဟုတ် DM ဟုတ်မဟုတ် စစ်ဆေးခြင်း
   const isComment = ctx.message.reply_to_message || 
                     ctx.message.is_topic_message || 
                     ctx.message.message_thread_id || 
@@ -91,6 +103,10 @@ const handleDiceLogic = async (ctx) => {
                     ctx.chat.type === 'private';
                     
   if (!isComment) return;
+
+  // Owner မရှိသော Group/Chat ဖြစ်ပါက အလုပ်မလုပ်ပါ
+  const hasAccess = await isOwnerInChat(ctx);
+  if (!hasAccess) return;
 
   const diceValue = Number(ctx.message.dice.value);
   const userId = ctx.from.id;
@@ -124,7 +140,7 @@ const handleDiceLogic = async (ctx) => {
 
     finalBalance = currentBalance;
 
-    // 3. Database သို့ Data အသစ် သိမ်းဆည်းခြင်း
+    // 3. Database သို့ Data အသစ် အမြဲတမ်း ပြန်လည် သိမ်းဆည်းခြင်း
     await supabase.from('users').upsert({
       telegram_id: userId,
       username: rawUsername,
@@ -166,7 +182,7 @@ const handleDiceLogic = async (ctx) => {
   deleteMessageLater(ctx, ctx.chat.id, sentMsg.message_id, 5000);
 };
 
-// 3. Slot Machine Dice Handling (Non-blocking background execution)
+// 3. Slot Machine Dice Handling (Non-blocking background execution for heavy traffic)
 bot.on('message:dice', (ctx) => {
   const promise = handleDiceLogic(ctx);
 

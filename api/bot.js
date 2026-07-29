@@ -32,7 +32,7 @@ const deleteMessageLater = (ctx, chatId, messageId, delay = 5000) => {
     try {
       await ctx.api.deleteMessage(chatId, messageId);
     } catch (e) {
-      // Ignore deletion errors (e.g. message already deleted or missing perms)
+      // Ignore deletion errors
     }
   })();
 
@@ -63,19 +63,9 @@ bot.command('spin', async (ctx) => {
   await ctx.replyWithDice('🎰');
 });
 
-// Async Background Logic Handler (High Traffic & Concurrency Friendly)
-const handleDiceSpinLogic = async (ctx) => {
-  // 🎰 မဟုတ်ရင် အလုပ်မလုပ်ပါ
+// 3. Slot Machine Dice Handling Logic
+const processDiceSpin = async (ctx) => {
   if (!ctx.message || !ctx.message.dice || ctx.message.dice.emoji !== '🎰') return;
-
-  // Channel Comment (Reply) သို့မဟုတ် Topic သို့မဟုတ် Group Chat စစ်ဆေးခြင်း
-  const isComment = ctx.message.reply_to_message || 
-                    ctx.message.is_topic_message || 
-                    ctx.message.message_thread_id || 
-                    ctx.chat.type === 'supergroup' || 
-                    ctx.chat.type === 'group';
-                    
-  if (!isComment) return;
 
   const diceValue = Number(ctx.message.dice.value);
   const userId = ctx.from.id;
@@ -86,7 +76,7 @@ const handleDiceSpinLogic = async (ctx) => {
   // Slot Animation ရပ်တန့်သည်အထိ ၂.၇ စက္ကန့် တိတိ စောင့်ပါမည်
   await sleep(2700);
 
-  // အနိုင်ရ/မရ စစ်ဆေးခြင်း (SLOT_REWARDS ထဲမှာ diceValue ရှိမှသာ အနိုင်ရမည်)
+  // အနိုင်ရ/မရ စစ်ဆေးခြင်း
   const winCombination = SLOT_REWARDS[diceValue];
   const rewardAmount = winCombination ? Number(winCombination.reward) : 0;
 
@@ -124,13 +114,11 @@ const handleDiceSpinLogic = async (ctx) => {
   let replyText = '';
 
   if (winCombination) {
-    // ပေါက်သည့်အကွက်များ (64, 43, 22, 1) ကျမှသာ အောက်ပါ စာသားထွက်မည်
     replyText = `🎉 <b>Congratulations ${displayName}!</b>\n` +
       `<b>You got ${winCombination.name} and received ${winCombination.reward} GRAM!</b>\n` +
       `<blockquote><b>Balance = <code>${finalBalance.toFixed(6)} 💎</code></b></blockquote>\n` +
       `<b>Mini 0.05 GRAM💰,📢@Rampage528</b>`;
   } else {
-    // မပေါက်သည့် အကွက်များ အတွက်
     replyText = `❌ <b>Try again ${displayName}! Better luck next time.</b>\n` +
       `<blockquote><b>Balance = <code>${finalBalance.toFixed(6)} 💎</code></b></blockquote>\n` +
       `<b>Mini 0.05 GRAM💰,📢@Rampage528</b>`;
@@ -151,9 +139,9 @@ const handleDiceSpinLogic = async (ctx) => {
   deleteMessageLater(ctx, ctx.chat.id, sentMsg.message_id, 5000);
 };
 
-// 3. Slot Machine Dice Handling (Non-blocking Listener)
+// Slot Event Listener (Non-blocking Concurrent Handling)
 bot.on('message:dice', (ctx) => {
-  const promise = handleDiceSpinLogic(ctx);
+  const promise = processDiceSpin(ctx);
 
   if (ctx.waitUntil) {
     ctx.waitUntil(promise);

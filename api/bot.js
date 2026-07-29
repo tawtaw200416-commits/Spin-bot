@@ -12,11 +12,11 @@ const bot = new Bot(BOT_TOKEN);
 // Helper function to handle delays safely
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-// Slot Machine Rewards Mapping
+// Slot Machine Rewards Mapping (Telegram ၏ တိကျသော Dice Value များနှင့် အကိုက်ညီဆုံး ပြင်ဆင်ထားသည်)
 const SLOT_REWARDS = {
   64: { reward: 0.001,  name: '7 7 7' },
-  43: { reward: 0.0005, name: '🍫 🍫 🍫' },
-  22: { reward: 0.0003, name: '🍋 🍋 🍋' },
+  22: { reward: 0.0005, name: '🍫 🍫 🍫' },
+  43: { reward: 0.0003, name: '🍋 🍋 🍋' },
   1:  { reward: 0.0001, name: '🍒 🍒 🍒' }
 };
 
@@ -81,14 +81,14 @@ bot.on('message:dice', async (ctx) => {
   // Spin လုံးဝ ရပ်သွားသည့် အချိန်အတိအကျ (၁.၈ စက္ကန့်) နှောင့်နှေးပေးခြင်း
   await sleep(1800);
 
-  // အနိုင်ရ/မရ စစ်ဆေးခြင်း (SLOT_REWARDS ထဲမှာ diceValue ရှိမှသာ အနိုင်ရမည်)
+  // အနိုင်ရ/မရ စစ်ဆေးခြင်း
   const winCombination = SLOT_REWARDS[diceValue];
   const rewardAmount = winCombination ? winCombination.reward : 0;
 
   let finalBalance = 0;
 
   try {
-    // 1. လက်ရှိ User ၏ Balance ကို ရယူခြင်း
+    // 1. လက်ရှိ User ၏ Balance ကို Database မှ ရယူခြင်း
     let { data: user, error: fetchErr } = await supabase
       .from('users')
       .select('balance')
@@ -97,14 +97,14 @@ bot.on('message:dice', async (ctx) => {
 
     let currentBalance = user && user.balance ? parseFloat(user.balance) : 0;
 
-    // 2. အကယ်၍ အနိုင်ရမှသာ Balance တိုးပေးပါမည် (မနိုင်ပါက မပေါင်းပါ)
+    // 2. မှန်ကန်သော တန်ဖိုးဖြင့် တိကျစွာ ပေါင်းစပ်ခြင်း
     if (rewardAmount > 0) {
-      currentBalance = Math.round((currentBalance + rewardAmount) * 1000000) / 1000000;
+      currentBalance = parseFloat((currentBalance + rewardAmount).toFixed(6));
     }
 
     finalBalance = currentBalance;
 
-    // 3. Database သို့ Data အသစ် အမြဲတမ်း ပြန်လည် သိမ်းဆည်းခြင်း
+    // 3. Database သို့ Data အသစ် သိမ်းဆည်းခြင်း
     await supabase.from('users').upsert({
       telegram_id: userId,
       username: rawUsername,
@@ -119,13 +119,11 @@ bot.on('message:dice', async (ctx) => {
   let replyText = '';
 
   if (winCombination) {
-    // ပေါက်သည့်အကွက်များ (64, 43, 22, 1) ကျမှသာ အောက်ပါ စာသားထွက်မည်
     replyText = `🎉 <b>Congratulations ${displayName}!</b>\n` +
       `<b>You got ${winCombination.name} and received ${winCombination.reward} GRAM!</b>\n` +
       `<blockquote><b>Balance = <code>${finalBalance.toFixed(6)} 💎</code></b></blockquote>\n` +
       `<b>Mini 0.05 GRAM💰,📢@Rampage528</b>`;
   } else {
-    // မပေါက်သည့် အကွက်များအတွက် ဘာမှ မပေါင်းဘဲ လက်ရှိ Balance ကိုသာ ပြမည်
     replyText = `❌ <b>Try again ${displayName}! Better luck next time.</b>\n` +
       `<blockquote><b>Balance = <code>${finalBalance.toFixed(6)} 💎</code></b></blockquote>\n` +
       `<b>Mini 0.05 GRAM💰,📢@Rampage528</b>`;
@@ -146,7 +144,7 @@ bot.on('message:dice', async (ctx) => {
   deleteMessageLater(ctx, ctx.chat.id, sentMsg.message_id, 5000);
 });
 
-// Vercel Serverless Native Handler (မူရင်း std/http ကို ပြန်လည်အသုံးပြုထားပါသည်)
+// Vercel Serverless Native Handler
 const handleWebhook = webhookCallback(bot, 'std/http');
 
 module.exports = async (req, res, context) => {

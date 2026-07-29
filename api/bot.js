@@ -68,7 +68,7 @@ const handleDiceLogic = async (ctx) => {
   // 🎰 မဟုတ်ရင် အလုပ်မလုပ်ပါ
   if (!ctx.message || !ctx.message.dice || ctx.message.dice.emoji !== '🎰') return;
 
-  // Channel Comment (Reply) သို့မဟုတ် Chat များ ဟုတ်မဟုတ် စစ်ဆေးခြင်း
+  // Channel Comment (Reply) သို့မဟုတ် Chat မက်ဆေ့ခ်ျ ဟုတ်မဟုတ် စစ်ဆေးခြင်း
   const isComment = ctx.message.reply_to_message || 
                     ctx.message.is_topic_message || 
                     ctx.message.message_thread_id || 

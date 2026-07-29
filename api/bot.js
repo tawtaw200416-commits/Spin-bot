@@ -12,12 +12,30 @@ const bot = new Bot(BOT_TOKEN);
 // Sleep Helper Function
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-// Slot Machine Rewards Mapping (Telegram Dice Values အတိအကျ - 100% တိကျမှန်ကန်စေရန်)
-const SLOT_REWARDS = {
-  64: { reward: 0.001, name: '7 7 7' },         // 7 7 7
-  43: { reward: 0.0005, name: '🍫 🍫 🍫' },   // Chocolate
-  22: { reward: 0.0003, name: '🍋 🍋 🍋' },   // Lemon
-  1:  { reward: 0.0001, name: '🍒 🍒 🍒' }    // Cherry
+// Telegram Slot Machine ၏ တရားဝင် သင်္ချာဖော်မြူลาဖြင့် ဘီး ၃ ခုလုံးကို အတိအကျ ခွဲထုတ်စစ်ဆေးမည့် Function
+const getSlotResult = (value) => {
+  let v = value - 1;
+  let r1 = v % 4;
+  let r2 = Math.floor(v / 4) % 4;
+  let r3 = Math.floor(v / 16) % 4;
+
+  const symbols = ['🍒 🍒 🍒', '🍋 🍋 🍋', '🍫 🍫 🍫', '🏷️ BAR BAR BAR'];
+  const rewards = {
+    0: 0.0001, // Cherry
+    1: 0.0003, // Lemon
+    2: 0.0005, // Chocolate
+    3: 0.001   // BAR / 7
+  };
+
+  // ၃ ခုတန်းမှသာ (Symbol ၃ ခုတူမှသာ) ဆုပေးမည်
+  if (r1 === r2 && r2 === r3) {
+    return {
+      name: symbols[r3],
+      reward: rewards[r3]
+    };
+  }
+
+  return null; // ၃ ခု မတန်းပါက null ပြန်မည်
 };
 
 // Error Handling
@@ -78,7 +96,7 @@ bot.on('message:dice', async (ctx) => {
   const displayName = ctx.from.username ? `@${ctx.from.username}` : rawUsername;
 
   let replyText = '';
-  const winCombination = SLOT_REWARDS[diceValue];
+  const winCombination = getSlotResult(diceValue);
   const reward = winCombination ? winCombination.reward : 0;
 
   try {
@@ -92,7 +110,6 @@ bot.on('message:dice', async (ctx) => {
     let newBalance = currentBalance;
 
     if (reward > 0) {
-      // ဒသမ မှန်အောင် ပေါင်းပေးမည့် စာကြောင်း
       newBalance = Math.round((currentBalance + reward) * 1000000) / 1000000;
     }
 
@@ -130,7 +147,6 @@ bot.on('message:dice', async (ctx) => {
     }
   }
 
-  // Comment ထဲမှာ စာမပျောက်ဘဲ မှန်မှန်ကန်ကန် ပြန်ပို့ပေးနိုင်ရန် message_thread_id ထည့်သွင်းခြင်း
   const replyOptions = { 
     parse_mode: 'HTML',
     reply_to_message_id: ctx.message.message_id
@@ -140,10 +156,7 @@ bot.on('message:dice', async (ctx) => {
     replyOptions.message_thread_id = ctx.message.message_thread_id;
   }
 
-  // စာပြန်ပို့ခြင်း
   const sentMsg = await ctx.reply(replyText, replyOptions);
-
-  // ၅ စက္ကန့် စောင့်ပြီးမှ Auto Delete လုပ်ရန် Background သို့ လွှဲပေးမည်
   deleteMessageLater(ctx, ctx.chat.id, sentMsg.message_id, 5000);
 });
 

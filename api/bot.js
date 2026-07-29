@@ -63,8 +63,9 @@ bot.command('spin', async (ctx) => {
   await ctx.replyWithDice('🎰');
 });
 
-// 3. Slot Machine Dice Handling Logic
+// 3. Main Slot Processing Logic Function (Async Non-blocking)
 const processDiceSpin = async (ctx) => {
+  // 🎰 မဟုတ်ရင် အလုပ်မလုပ်ပါ
   if (!ctx.message || !ctx.message.dice || ctx.message.dice.emoji !== '🎰') return;
 
   const diceValue = Number(ctx.message.dice.value);
@@ -83,7 +84,7 @@ const processDiceSpin = async (ctx) => {
   let finalBalance = 0;
 
   try {
-    // 1. လက်ရှိ User ၏ Balance ကို ရယူခြင်း
+    // ၁. လက်ရှိ User ၏ Balance ကို ရယူခြင်း
     let { data: user } = await supabase
       .from('users')
       .select('balance')
@@ -92,14 +93,14 @@ const processDiceSpin = async (ctx) => {
 
     let currentBalance = user && user.balance ? parseFloat(user.balance) : 0;
 
-    // 2. ဒဿမ တိကျစွာ ပေါင်းခြင်း (Precision Fixed To 6 Decimals - 100% Accurate)
+    // ၂. ဒဿမ တိကျစွာ ပေါင်းခြင်း ( Precision Fixed To 6 Decimals )
     if (rewardAmount > 0) {
       currentBalance = Math.round((currentBalance + rewardAmount) * 1000000) / 1000000;
     }
 
     finalBalance = currentBalance;
 
-    // 3. Database သို့ Data အသစ် အမြဲတမ်း ပြန်လည် သိမ်းဆည်းခြင်း
+    // ၃. Database သို့ Data အသစ် အမြဲတမ်း ပြန်လည် သိမ်းဆည်းခြင်း
     await supabase.from('users').upsert({
       telegram_id: userId,
       username: rawUsername,
@@ -124,7 +125,7 @@ const processDiceSpin = async (ctx) => {
       `<b>Mini 0.05 GRAM💰,📢@Rampage528</b>`;
   }
 
-  // Reply Options
+  // Reply Options (Dynamic thread and reply handle)
   const replyOptions = { 
     parse_mode: 'HTML',
     reply_to_message_id: ctx.message.message_id
@@ -139,7 +140,7 @@ const processDiceSpin = async (ctx) => {
   deleteMessageLater(ctx, ctx.chat.id, sentMsg.message_id, 5000);
 };
 
-// Slot Event Listener (Non-blocking Concurrent Handling)
+// Slot Event Listener (Always execution in background - 100% Guaranteed response)
 bot.on('message:dice', (ctx) => {
   const promise = processDiceSpin(ctx);
 
@@ -159,13 +160,11 @@ module.exports = async (req, res, context) => {
       const host = req.headers.host || 'spin-bot-ten.vercel.app';
       const url = `https://${host}${req.url}`;
       
-      const rawBody = typeof req.body === 'string' ? req.body : JSON.stringify(req.body || {});
-
       const response = await handleWebhook(
         new Request(url, {
           method: 'POST',
           headers: req.headers,
-          body: rawBody,
+          body: typeof req.body === 'string' ? req.body : JSON.stringify(req.body || {}),
         }),
         context && context.waitUntil ? context.waitUntil.bind(context) : undefined
       );

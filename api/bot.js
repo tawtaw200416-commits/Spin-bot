@@ -12,15 +12,18 @@ const OWNER_ID = 1793453606;
 const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 const bot = new Bot(BOT_TOKEN);
 
+// Allowed Chat Cache (Performance မြှင့်ရန်)
+const allowedChats = new Set();
+
 // Helper function to handle delays safely
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-// Slot Machine Rewards Mapping
+// Slot Machine Rewards Mapping (Micro Units: 1 GRAM = 1,000,000)
 const SLOT_REWARDS = {
-  64: { reward: 0.001,  name: '7 7 7' },
-  43: { reward: 0.0005, name: '🍫 🍫 🍫' },
-  22: { reward: 0.0003, name: '🍋 🍋 🍋' },
-  1:  { reward: 0.0001, name: '🍒 🍒 🍒' }
+  64: { reward: 0.001,  units: 1000n, name: '7 7 7' },
+  43: { reward: 0.0005, units: 500n,  name: '🍫 🍫 🍫' },
+  22: { reward: 0.0003, units: 300n,  name: '🍋 🍋 🍋' },
+  1:  { reward: 0.0001, units: 100n,  name: '🍒 🍒 🍒' }
 };
 
 // Error Handling
@@ -35,7 +38,7 @@ const deleteMessageLater = (ctx, chatId, messageId, delay = 5000) => {
     try {
       await ctx.api.deleteMessage(chatId, messageId);
     } catch (e) {
-      // Ignore deletion errors (e.g. message already deleted or missing perms)
+      // Ignore deletion errors
     }
   })();
 
@@ -46,29 +49,54 @@ const deleteMessageLater = (ctx, chatId, messageId, delay = 5000) => {
   }
 };
 
-// Helper: Owner ရှိ/မရှိ စစ်ဆေးသည့် Function
-const isOwnerInChat = async (ctx) => {
-  // DM (Private Chat) ဆိုလျှင် Owner ဖြစ်မှ ရမည်
-  if (ctx.chat.type === 'private') {
-    return ctx.from?.id === OWNER_ID;
+// Helper: Chat တစ်ခုအား Owner သုံးစွဲခွင့် ပေးထားခြင်း ရှိ/မရှိ စစ်ဆေးခြင်း
+const isChatAuthorized = async (chatId, senderId) => {
+  // ၁။ စာပို့သူသည် Owner ဖြစ်ပါက အလိုအလျောက် သုံးခွင့်ပေးပြီး Chat ID အား Cache တွင် မှတ်မည်
+  if (senderId === OWNER_ID) {
+    allowedChats.add(chatId);
+    return true;
   }
 
-  // Group / Supergroup / Channel Thread များတွင် Owner Member အဖြစ် ရှိမရှိ စစ်ဆေးခြင်း
-  try {
-    const member = await ctx.api.getChatMember(ctx.chat.id, OWNER_ID);
-    return ['creator', 'administrator', 'member'].includes(member.status);
-  } catch (err) {
-    // Owner မရှိပါက သို့မဟုတ် Error တက်ပါက false ပြန်မည်
-    return false;
+  // ၂။ Cache ထဲတွင် ရှိနေပြီးသား ဖြစ်ပါက Direct Allow လုပ်မည်
+  if (allowedChats.has(chatId)) {
+    return true;
   }
+
+  // ၃။ Database မှ Chat အား Owner Activate လုပ်ထားသလား စစ်ဆေးမည်
+  try {
+    const { data } = await supabase
+      .from('authorized_chats')
+      .select('chat_id')
+      .eq('chat_id', chatId)
+      .maybeSingle();
+
+    if (data) {
+      allowedChats.add(chatId);
+      return true;
+    }
+  } catch (err) {
+    console.error("Auth check error:", err);
+  }
+
+  return false;
 };
 
 // 1. /start Command
 bot.command('start', async (ctx) => {
-  const hasAccess = await isOwnerInChat(ctx);
-  if (!hasAccess) return;
-
   const userId = ctx.from?.id;
+  const chatId = ctx.chat.id;
+
+  // Owner ဖြစ်ပါက ဒီ Group/Chat ကို Activated Group အဖြစ် DB မှာ မှတ်ပေးမည်
+  if (userId === OWNER_ID) {
+    allowedChats.add(chatId);
+    try {
+      await supabase.from('authorized_chats').upsert({ chat_id: chatId });
+    } catch (e) {}
+  }
+
+  const authorized = await isChatAuthorized(chatId, userId);
+  if (!authorized) return;
+
   const rawUsername = ctx.from?.username || ctx.from?.first_name || `ID: ${userId}`;
   const displayName = ctx.from?.username ? `@${ctx.from.username}` : rawUsername;
 
@@ -78,96 +106,85 @@ bot.command('start', async (ctx) => {
     `<b>Mini 0.05 GRAM💰,📢@Rampage528</b>`;
 
   const sent = await ctx.reply(startMessage, { parse_mode: 'HTML' });
-  deleteMessageLater(ctx, ctx.chat.id, sent.message_id, 5000);
+  deleteMessageLater(ctx, chatId, sent.message_id, 5000);
 });
 
 // 2. /spin Command
 bot.command('spin', async (ctx) => {
-  const hasAccess = await isOwnerInChat(ctx);
-  if (!hasAccess) return;
+  const authorized = await isChatAuthorized(ctx.chat.id, ctx.from?.id);
+  if (!authorized) return;
 
   await ctx.replyWithDice('🎰');
 });
 
-// Main async logic handler for dice
+// 3. Slot Machine Dice Handling (Async Background Processing)
 const handleDiceLogic = async (ctx) => {
-  // 🎰 မဟုတ်ရင် အလုပ်မလုပ်ပါ
   if (!ctx.message || !ctx.message.dice || ctx.message.dice.emoji !== '🎰') return;
 
-  // Channel Comment (Reply), Topic သို့မဟုတ် DM ဟုတ်မဟုတ် စစ်ဆေးခြင်း
-  const isComment = ctx.message.reply_to_message || 
-                    ctx.message.is_topic_message || 
-                    ctx.message.message_thread_id || 
-                    ctx.chat.type === 'supergroup' || 
-                    ctx.chat.type === 'group' || 
-                    ctx.chat.type === 'private';
-                    
-  if (!isComment) return;
+  const chatId = ctx.chat.id;
+  const userId = ctx.from.id;
 
-  // Owner မရှိသော Group/Chat ဖြစ်ပါက အလုပ်မလုပ်ပါ
-  const hasAccess = await isOwnerInChat(ctx);
-  if (!hasAccess) return;
+  // ဝင်ခွင့်ရှိသော Group ဖြစ်ကြောင်း စစ်ဆေးခြင်း
+  const authorized = await isChatAuthorized(chatId, userId);
+  if (!authorized) return;
 
   const diceValue = Number(ctx.message.dice.value);
-  const userId = ctx.from.id;
-  
   const rawUsername = ctx.from.username || ctx.from.first_name || `ID: ${userId}`;
   const displayName = ctx.from.username ? `@${ctx.from.username}` : rawUsername;
 
-  // Slot Animation ရပ်တန့်သည်အထိ ၂.၇ စက္ကန့် စောင့်ပါမည်
+  // Slot Animation အတွက် ၂.၇ စက္ကန့် စောင့်မည်
   await sleep(2700);
 
-  // အနိုင်ရ/မရ စစ်ဆေးခြင်း (SLOT_REWARDS ထဲမှာ diceValue ရှိမှသာ အနိုင်ရမည်)
   const winCombination = SLOT_REWARDS[diceValue];
-  const rewardAmount = winCombination ? Number(winCombination.reward) : 0;
+  const rewardUnits = winCombination ? winCombination.units : 0n;
 
-  let finalBalance = 0;
+  let finalBalanceFormatted = "0.000000";
 
   try {
-    // 1. လက်ရှိ User ၏ Balance ကို ရယူခြင်း
-    let { data: user, error: fetchErr } = await supabase
+    // ၁။ DB မှ လက်ရှိ Balance ရယူခြင်း
+    let { data: user } = await supabase
       .from('users')
       .select('balance')
       .eq('telegram_id', userId)
       .maybeSingle();
 
-    let currentBalance = user && user.balance ? parseFloat(user.balance) : 0;
-
-    // 2. ဒဿမ တိကျစွာ ပေါင်းခြင်း (Precision Fixed To 6 Decimals)
-    if (rewardAmount > 0) {
-      currentBalance = Math.round((currentBalance + rewardAmount) * 1000000) / 1000000;
+    let currentUnits = 0n;
+    if (user && user.balance) {
+      currentUnits = BigInt(Math.round(parseFloat(user.balance) * 1000000));
     }
 
-    finalBalance = currentBalance;
+    // ၂။ တိကျစွာ ပေါင်းခြင်း (Micro Units ဖြင့် တွက်သည့်အတွက် Decimal Error လုံးဝ မရှိပါ)
+    if (rewardUnits > 0n) {
+      currentUnits += rewardUnits;
+    }
 
-    // 3. Database သို့ Data အသစ် အမြဲတမ်း ပြန်လည် သိမ်းဆည်းခြင်း
+    const finalBalanceNum = Number(currentUnits) / 1000000;
+    finalBalanceFormatted = finalBalanceNum.toFixed(6);
+
+    // ၃။ DB သို့ ပြန်လည် သိမ်းဆည်းခြင်း
     await supabase.from('users').upsert({
       telegram_id: userId,
       username: rawUsername,
-      balance: finalBalance
+      balance: finalBalanceNum
     }, { onConflict: 'telegram_id' });
 
   } catch (error) {
     console.error("Supabase Transaction Error:", error);
   }
 
-  // Telegram Message တည်ဆောက်ခြင်း
+  // Telegram စာပြန်ပို့ရန် ပြင်ဆင်ခြင်း
   let replyText = '';
-
   if (winCombination) {
-    // ပေါက်သည့်အကွက်များ (64, 43, 22, 1) ကျမှသာ ထွက်မည်
     replyText = `🎉 <b>Congratulations ${displayName}!</b>\n` +
       `<b>You got ${winCombination.name} and received ${winCombination.reward} GRAM!</b>\n` +
-      `<blockquote><b>Balance = <code>${finalBalance.toFixed(6)} 💎</code></b></blockquote>\n` +
+      `<blockquote><b>Balance = <code>${finalBalanceFormatted} 💎</code></b></blockquote>\n` +
       `<b>Mini 0.05 GRAM💰,📢@Rampage528</b>`;
   } else {
-    // မပေါက်သည့် အကွက်များ အတွက်
     replyText = `❌ <b>Try again ${displayName}! Better luck next time.</b>\n` +
-      `<blockquote><b>Balance = <code>${finalBalance.toFixed(6)} 💎</code></b></blockquote>\n` +
+      `<blockquote><b>Balance = <code>${finalBalanceFormatted} 💎</code></b></blockquote>\n` +
       `<b>Mini 0.05 GRAM💰,📢@Rampage528</b>`;
   }
 
-  // Reply Options
   const replyOptions = { 
     parse_mode: 'HTML',
     reply_to_message_id: ctx.message.message_id
@@ -177,12 +194,11 @@ const handleDiceLogic = async (ctx) => {
     replyOptions.message_thread_id = ctx.message.message_thread_id;
   }
 
-  // စာပြန်ပို့ခြင်းနှင့် ၅ စက္ကန့်အကြာတွင် ဖျက်ခြင်း
   const sentMsg = await ctx.reply(replyText, replyOptions);
-  deleteMessageLater(ctx, ctx.chat.id, sentMsg.message_id, 5000);
+  deleteMessageLater(ctx, chatId, sentMsg.message_id, 5000);
 };
 
-// 3. Slot Machine Dice Handling (Non-blocking background execution for heavy traffic)
+// Non-blocking Concurrent Execution
 bot.on('message:dice', (ctx) => {
   const promise = handleDiceLogic(ctx);
 
@@ -201,7 +217,6 @@ module.exports = async (req, res, context) => {
     try {
       const host = req.headers.host || 'spin-bot-ten.vercel.app';
       const url = `https://${host}${req.url}`;
-      
       const rawBody = typeof req.body === 'string' ? req.body : JSON.stringify(req.body || {});
 
       const response = await handleWebhook(

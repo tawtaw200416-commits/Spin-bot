@@ -63,12 +63,21 @@ bot.command('spin', async (ctx) => {
   await ctx.replyWithDice('🎰');
 });
 
-// 3. Main Slot Machine Dice Processing Logic
-const processDiceSpin = async (ctx) => {
+// Async Background Logic Handler (High Traffic & Concurrency Friendly)
+const handleDiceSpinLogic = async (ctx) => {
   // 🎰 မဟုတ်ရင် အလုပ်မလုပ်ပါ
   if (!ctx.message || !ctx.message.dice || ctx.message.dice.emoji !== '🎰') return;
 
-  const diceValue = ctx.message.dice.value;
+  // Channel Comment (Reply) သို့မဟုတ် Topic သို့မဟုတ် Group Chat စစ်ဆေးခြင်း
+  const isComment = ctx.message.reply_to_message || 
+                    ctx.message.is_topic_message || 
+                    ctx.message.message_thread_id || 
+                    ctx.chat.type === 'supergroup' || 
+                    ctx.chat.type === 'group';
+                    
+  if (!isComment) return;
+
+  const diceValue = Number(ctx.message.dice.value);
   const userId = ctx.from.id;
   
   const rawUsername = ctx.from.username || ctx.from.first_name || `ID: ${userId}`;
@@ -77,14 +86,14 @@ const processDiceSpin = async (ctx) => {
   // Slot Animation ရပ်တန့်သည်အထိ ၂.၇ စက္ကန့် တိတိ စောင့်ပါမည်
   await sleep(2700);
 
-  // အနိုင်ရ/မရ စစ်ဆေးခြင်း
+  // အနိုင်ရ/မရ စစ်ဆေးခြင်း (SLOT_REWARDS ထဲမှာ diceValue ရှိမှသာ အနိုင်ရမည်)
   const winCombination = SLOT_REWARDS[diceValue];
-  const rewardAmount = winCombination ? winCombination.reward : 0;
+  const rewardAmount = winCombination ? Number(winCombination.reward) : 0;
 
   let finalBalance = 0;
 
   try {
-    // ၁. လက်ရှိ User ၏ Balance ကို ရယူခြင်း
+    // 1. လက်ရှိ User ၏ Balance ကို ရယူခြင်း
     let { data: user } = await supabase
       .from('users')
       .select('balance')
@@ -93,14 +102,14 @@ const processDiceSpin = async (ctx) => {
 
     let currentBalance = user && user.balance ? parseFloat(user.balance) : 0;
 
-    // ၂. ဒဿမ တိကျစွာ ပေါင်းခြင်း (Fixed Decimal Accuracy)
+    // 2. ဒဿမ တိကျစွာ ပေါင်းခြင်း (Precision Fixed To 6 Decimals - 100% Accurate)
     if (rewardAmount > 0) {
       currentBalance = Math.round((currentBalance + rewardAmount) * 1000000) / 1000000;
     }
 
     finalBalance = currentBalance;
 
-    // ၃. Database သို့ Data အသစ် အမြဲတမ်း ပြန်လည် သိမ်းဆည်းခြင်း
+    // 3. Database သို့ Data အသစ် အမြဲတမ်း ပြန်လည် သိမ်းဆည်းခြင်း
     await supabase.from('users').upsert({
       telegram_id: userId,
       username: rawUsername,
@@ -115,11 +124,13 @@ const processDiceSpin = async (ctx) => {
   let replyText = '';
 
   if (winCombination) {
+    // ပေါက်သည့်အကွက်များ (64, 43, 22, 1) ကျမှသာ အောက်ပါ စာသားထွက်မည်
     replyText = `🎉 <b>Congratulations ${displayName}!</b>\n` +
       `<b>You got ${winCombination.name} and received ${winCombination.reward} GRAM!</b>\n` +
       `<blockquote><b>Balance = <code>${finalBalance.toFixed(6)} 💎</code></b></blockquote>\n` +
       `<b>Mini 0.05 GRAM💰,📢@Rampage528</b>`;
   } else {
+    // မပေါက်သည့် အကွက်များ အတွက်
     replyText = `❌ <b>Try again ${displayName}! Better luck next time.</b>\n` +
       `<blockquote><b>Balance = <code>${finalBalance.toFixed(6)} 💎</code></b></blockquote>\n` +
       `<b>Mini 0.05 GRAM💰,📢@Rampage528</b>`;
@@ -140,9 +151,9 @@ const processDiceSpin = async (ctx) => {
   deleteMessageLater(ctx, ctx.chat.id, sentMsg.message_id, 5000);
 };
 
-// Slot Machine Event Listener (Non-blocking Background Execution)
+// 3. Slot Machine Dice Handling (Non-blocking Listener)
 bot.on('message:dice', (ctx) => {
-  const promise = processDiceSpin(ctx);
+  const promise = handleDiceSpinLogic(ctx);
 
   if (ctx.waitUntil) {
     ctx.waitUntil(promise);
@@ -160,11 +171,13 @@ module.exports = async (req, res, context) => {
       const host = req.headers.host || 'spin-bot-ten.vercel.app';
       const url = `https://${host}${req.url}`;
       
+      const rawBody = typeof req.body === 'string' ? req.body : JSON.stringify(req.body || {});
+
       const response = await handleWebhook(
         new Request(url, {
           method: 'POST',
           headers: req.headers,
-          body: typeof req.body === 'string' ? req.body : JSON.stringify(req.body || {}),
+          body: rawBody,
         }),
         context && context.waitUntil ? context.waitUntil.bind(context) : undefined
       );

@@ -63,8 +63,8 @@ bot.command('spin', async (ctx) => {
   await ctx.replyWithDice('🎰');
 });
 
-// 3. Slot Machine Dice Handling
-bot.on('message:dice', async (ctx) => {
+// Main async logic handler for dice
+const handleDiceLogic = async (ctx) => {
   // 🎰 မဟုတ်ရင် အလုပ်မလုပ်ပါ
   if (!ctx.message.dice || ctx.message.dice.emoji !== '🎰') return;
 
@@ -88,28 +88,35 @@ bot.on('message:dice', async (ctx) => {
   let finalBalance = 0;
 
   try {
-    // 1. လက်ရှိ User ၏ Balance ကို ရယူခြင်း
-    let { data: user, error: fetchErr } = await supabase
-      .from('users')
-      .select('balance')
-      .eq('telegram_id', userId)
-      .maybeSingle();
+    // Supabase RPC မ်ားဖြင့် Atomic Update ပြုလုပ်ခြင်း
+    const { data, error } = await supabase.rpc('increment_user_balance', {
+      p_telegram_id: userId,
+      p_username: rawUsername,
+      p_amount: rewardAmount
+    });
 
-    let currentBalance = user && user.balance ? parseFloat(user.balance) : 0;
+    if (error) {
+      // Fallback logic if RPC fails (မူလ Read & Upsert logic)
+      let { data: user } = await supabase
+        .from('users')
+        .select('balance')
+        .eq('telegram_id', userId)
+        .maybeSingle();
 
-    // 2. အကယ်၍ အနိုင်ရမှသာ Balance တိုးပေးပါမည် (မနိုင်ပါက မပေါင်းပါ)
-    if (rewardAmount > 0) {
-      currentBalance = Math.round((currentBalance + rewardAmount) * 1000000) / 1000000;
+      let currentBalance = user && user.balance ? parseFloat(user.balance) : 0;
+      if (rewardAmount > 0) {
+        currentBalance = Math.round((currentBalance + rewardAmount) * 1000000) / 1000000;
+      }
+      finalBalance = currentBalance;
+
+      await supabase.from('users').upsert({
+        telegram_id: userId,
+        username: rawUsername,
+        balance: finalBalance
+      }, { onConflict: 'telegram_id' });
+    } else {
+      finalBalance = parseFloat(data || 0);
     }
-
-    finalBalance = currentBalance;
-
-    // 3. Database သို့ Data အသစ် အမြဲတမ်း ပြန်လည် သိမ်းဆည်းခြင်း
-    await supabase.from('users').upsert({
-      telegram_id: userId,
-      username: rawUsername,
-      balance: finalBalance
-    }, { onConflict: 'telegram_id' });
 
   } catch (error) {
     console.error("Supabase Transaction Error:", error);
@@ -144,6 +151,17 @@ bot.on('message:dice', async (ctx) => {
   // စာပြန်ပို့ခြင်းနှင့် ခဏအကြာတွင် ဖျက်ခြင်း
   const sentMsg = await ctx.reply(replyText, replyOptions);
   deleteMessageLater(ctx, ctx.chat.id, sentMsg.message_id, 5000);
+};
+
+// 3. Slot Machine Dice Handling (Non-blocking background execution)
+bot.on('message:dice', (ctx) => {
+  const promise = handleDiceLogic(ctx);
+
+  if (ctx.waitUntil) {
+    ctx.waitUntil(promise);
+  } else if (ctx.state && ctx.state.waitUntil) {
+    ctx.state.waitUntil(promise);
+  }
 });
 
 // Vercel Serverless Native Handler

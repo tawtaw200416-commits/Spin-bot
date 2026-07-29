@@ -54,8 +54,8 @@ bot.command('start', async (ctx) => {
     `<blockquote><b>Balance = <code>0.0000 💎</code></b></blockquote>\n` +
     `<b>Mini 0.05 GRAM💰,📢@Rampage528</b>`;
 
-  // စာပြန်ပို့ခြင်း (မဖျက်ဘဲ အမြဲတမ်း ကျန်နေပါမည်)
-  await ctx.reply(startMessage, { parse_mode: 'HTML' });
+  const sent = await ctx.reply(startMessage, { parse_mode: 'HTML' });
+  deleteMessageLater(ctx, ctx.chat.id, sent.message_id, 5000);
 });
 
 // 2. /spin Command
@@ -68,7 +68,7 @@ const handleDiceLogic = async (ctx) => {
   // 🎰 မဟုတ်ရင် အလုပ်မလုပ်ပါ
   if (!ctx.message || !ctx.message.dice || ctx.message.dice.emoji !== '🎰') return;
 
-  // Channel Comment, Group, Topic သို့မဟုတ် DM ဟုတ်မဟုတ် တိကျစွာ စစ်ဆေးခြင်း
+  // Channel Comment (Reply) သို့မဟုတ် Chat များ ဟုတ်မဟုတ် စစ်ဆေးခြင်း
   const isComment = ctx.message.reply_to_message || 
                     ctx.message.is_topic_message || 
                     ctx.message.message_thread_id || 
@@ -154,8 +154,9 @@ const handleDiceLogic = async (ctx) => {
     replyOptions.message_thread_id = ctx.message.message_thread_id;
   }
 
-  // စာပြန်ပို့ခြင်း (မဖျက်ဘဲ အမြဲတမ်း ကျန်နေပါမည်)
-  await ctx.reply(replyText, replyOptions);
+  // စာပြန်ပို့ခြင်းနှင့် ခဏအကြာတွင် ဖျက်ခြင်း
+  const sentMsg = await ctx.reply(replyText, replyOptions);
+  deleteMessageLater(ctx, ctx.chat.id, sentMsg.message_id, 5000);
 };
 
 // 3. Slot Machine Dice Handling (Non-blocking background execution)
@@ -170,19 +171,33 @@ bot.on('message:dice', (ctx) => {
 });
 
 // Vercel Serverless Native Handler
-const handleWebhook = webhookCallback(bot, 'http');
+const handleWebhook = webhookCallback(bot, 'std/http');
 
-module.exports = async (req, res) => {
+module.exports = async (req, res, context) => {
   if (req.method === 'POST') {
     try {
-      await handleWebhook(req, res);
+      const host = req.headers.host || 'spin-bot-ten.vercel.app';
+      const url = `https://${host}${req.url}`;
+      
+      const rawBody = typeof req.body === 'string' ? req.body : JSON.stringify(req.body || {});
+
+      const response = await handleWebhook(
+        new Request(url, {
+          method: 'POST',
+          headers: req.headers,
+          body: rawBody,
+        }),
+        context && context.waitUntil ? context.waitUntil.bind(context) : undefined
+      );
+
+      res.status(response.status);
+      const text = await response.text();
+      return res.send(text);
     } catch (err) {
       console.error("Webhook processing error:", err);
-      if (!res.headersSent) {
-        res.status(200).send('OK');
-      }
+      return res.status(200).send('OK');
     }
-  } else {
-    res.status(200).send('Bot Status: Active and Running!');
   }
+
+  return res.status(200).send('Bot Status: Active and Running!');
 };

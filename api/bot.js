@@ -78,7 +78,7 @@ bot.on('message:dice', async (ctx) => {
   const rawUsername = ctx.from.username || ctx.from.first_name || `ID: ${userId}`;
   const displayName = ctx.from.username ? `@${ctx.from.username}` : rawUsername;
 
-  // 🚀 အဓိကပြင်ဆင်ချက်: Spin စက်လုံးဝ ရပ်သွားသည့် အချိန်အတိအကျ (၁.၈ စက္ကန့်) သို့ ပြောင်းပေးထားပါသည်
+  // Spin လုံးဝ ရပ်သွားသည့် အချိန်အတိအကျ (၁.၈ စက္ကန့်) နှောင့်နှေးပေးခြင်း
   await sleep(1800);
 
   // အနိုင်ရ/မရ စစ်ဆေးခြင်း (SLOT_REWARDS ထဲမှာ diceValue ရှိမှသာ အနိုင်ရမည်)
@@ -88,7 +88,7 @@ bot.on('message:dice', async (ctx) => {
   let finalBalance = 0;
 
   try {
-    // 1. လက်ရှိ User တစ်ယောက်ချင်းစီ၏ Balance ကို Database မှ သီးသန့် အမှန်အတိုင်း အရင်ဆွဲထုတ်ခြင်း
+    // 1. လက်ရှိ User ၏ Balance ကို ရယူခြင်း
     let { data: user, error: fetchErr } = await supabase
       .from('users')
       .select('balance')
@@ -97,14 +97,14 @@ bot.on('message:dice', async (ctx) => {
 
     let currentBalance = user && user.balance ? parseFloat(user.balance) : 0;
 
-    // 2. အကယ်၍ အနိုင်ရမှသာ ထို User ၏ လက်ရှိ Balance ထဲသို့ တိကျစွာ ပေါင်းပေးမည် (မနိုင်ပါက လက်ရှိအတိုင်းသာ ထားမည်)
+    // 2. အကယ်၍ အနိုင်ရမှသာ Balance တိုးပေးပါမည် (မနိုင်ပါက မပေါင်းပါ)
     if (rewardAmount > 0) {
       currentBalance = Math.round((currentBalance + rewardAmount) * 1000000) / 1000000;
     }
 
     finalBalance = currentBalance;
 
-    // 3. Database သို့ ထို User ၏ နှုန်းထားကိုသာ Error မဖြစ်စေဘဲ သီးသန့် သိမ်းဆည်းခြင်း
+    // 3. Database သို့ Data အသစ် အမြဲတမ်း ပြန်လည် သိမ်းဆည်းခြင်း
     await supabase.from('users').upsert({
       telegram_id: userId,
       username: rawUsername,
@@ -125,7 +125,7 @@ bot.on('message:dice', async (ctx) => {
       `<blockquote><b>Balance = <code>${finalBalance.toFixed(6)} 💎</code></b></blockquote>\n` +
       `<b>Mini 0.05 GRAM💰,📢@Rampage528</b>`;
   } else {
-    // မပေါက်သည့် အကွက်များအတွက် ဘာမှ မပေါင်းဘဲ လက်ရှိ Balance ကိုသာ မှန်ကန်စွာပြမည်
+    // မပေါက်သည့် အကွက်များအတွက် ဘာမှ မပေါင်းဘဲ လက်ရှိ Balance ကိုသာ ပြမည်
     replyText = `❌ <b>Try again ${displayName}! Better luck next time.</b>\n` +
       `<blockquote><b>Balance = <code>${finalBalance.toFixed(6)} 💎</code></b></blockquote>\n` +
       `<b>Mini 0.05 GRAM💰,📢@Rampage528</b>`;
@@ -146,7 +146,7 @@ bot.on('message:dice', async (ctx) => {
   deleteMessageLater(ctx, ctx.chat.id, sentMsg.message_id, 5000);
 });
 
-// Vercel Serverless Native Handler
+// Vercel Serverless Native Handler (မူရင်း std/http ကို ပြန်လည်အသုံးပြုထားပါသည်)
 const handleWebhook = webhookCallback(bot, 'std/http');
 
 module.exports = async (req, res, context) => {

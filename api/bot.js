@@ -65,11 +65,7 @@ bot.command('spin', async (ctx) => {
 // Main async logic handler for dice
 const handleDiceLogic = async (ctx) => {
   // 🎰 မဟုတ်ရင် အလုပ်မလုပ်ပါ
-  if (!ctx.message.dice || ctx.message.dice.emoji !== '🎰') return;
-
-  // Channel Comment (Reply) ဟုတ်မဟုတ် စစ်ဆေးခြင်း
-  const isComment = ctx.message.reply_to_message || ctx.message.is_topic_message;
-  if (!isComment) return;
+  if (!ctx.message || !ctx.message.dice || ctx.message.dice.emoji !== '🎰') return;
 
   const diceValue = ctx.message.dice.value;
   const userId = ctx.from.id;
@@ -103,7 +99,10 @@ const handleDiceLogic = async (ctx) => {
         .maybeSingle();
 
       let currentBalance = user && user.balance ? Number(user.balance) : 0;
-      finalBalance = currentBalance + Number(rewardAmount);
+      if (rewardAmount > 0) {
+        currentBalance = Math.round((currentBalance + rewardAmount) * 1000000) / 1000000;
+      }
+      finalBalance = currentBalance;
 
       await supabase.from('users').upsert({
         telegram_id: userId,
@@ -111,7 +110,7 @@ const handleDiceLogic = async (ctx) => {
         balance: finalBalance
       }, { onConflict: 'telegram_id' });
     } else {
-      finalBalance = Number(data);
+      finalBalance = Number(data || 0);
     }
 
   } catch (error) {
@@ -168,17 +167,18 @@ module.exports = async (req, res, context) => {
       const host = req.headers.host || 'spin-bot-ten.vercel.app';
       const url = `https://${host}${req.url}`;
       
-      const request = new Request(url, {
-        method: 'POST',
-        headers: req.headers,
-        body: typeof req.body === 'string' ? req.body : JSON.stringify(req.body || {}),
-      });
+      const response = await handleWebhook(
+        new Request(url, {
+          method: 'POST',
+          headers: req.headers,
+          body: typeof req.body === 'string' ? req.body : JSON.stringify(req.body || {}),
+        }),
+        context && context.waitUntil ? context.waitUntil.bind(context) : undefined
+      );
 
-      // Background Processing လုပ်ခိုင်းပြီး Response ကို ချက်ချင်း OK ပို့ပေးမည် (Lag-Free)
-      handleWebhook(request, context && context.waitUntil ? context.waitUntil.bind(context) : undefined)
-        .catch((err) => console.error("Webhook processing error:", err));
-
-      return res.status(200).send('OK');
+      res.status(response.status);
+      const text = await response.text();
+      return res.send(text);
     } catch (err) {
       console.error("Webhook processing error:", err);
       return res.status(200).send('OK');

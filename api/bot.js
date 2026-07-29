@@ -12,30 +12,22 @@ const bot = new Bot(BOT_TOKEN);
 // Sleep Helper Function
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-// Telegram Slot Machine ၏ တရားဝင် သင်္ချာဖော်မြူลาဖြင့် ဘီး ၃ ခုလုံးကို အတိအကျ ခွဲထုတ်စစ်ဆေးမည့် Function
+// Telegram Slot Machine ၏ တရားဝင် တန်ဖိုးများကို အခြေခံသော တိုက်ရိုက် စစ်ဆေးသည့် Function
 const getSlotResult = (value) => {
   let v = value - 1;
   let r1 = v % 4;
   let r2 = Math.floor(v / 4) % 4;
   let r3 = Math.floor(v / 16) % 4;
 
-  const symbols = ['🍒 🍒 🍒', '🍋 🍋 🍋', '🍫 🍫 🍫', '🏷️ BAR BAR BAR'];
-  const rewards = {
-    0: 0.0001, // Cherry
-    1: 0.0003, // Lemon
-    2: 0.0005, // Chocolate
-    3: 0.001   // BAR / 7
-  };
-
-  // ၃ ခုတန်းမှသာ (Symbol ၃ ခုတူမှသာ) ဆုပေးမည်
+  // ၃ ခုတန်းမှသာ ဆုပေးမည် (0: Cherry, 1: Lemon, 2: Chocolate, 3: BAR/7)
   if (r1 === r2 && r2 === r3) {
-    return {
-      name: symbols[r3],
-      reward: rewards[r3]
-    };
+    if (r3 === 0) return { reward: 0.0001, name: '🍒 🍒 🍒' };
+    if (r3 === 1) return { reward: 0.0003, name: '🍋 🍋 🍋' };
+    if (r3 === 2) return { reward: 0.0005, name: '🍫 🍫 🍫' };
+    if (r3 === 3) return { reward: 0.001,  name: '🏷️ BAR BAR BAR' };
   }
 
-  return null; // ၃ ခု မတန်းပါက null ပြန်မည်
+  return null;
 };
 
 // Error Handling
@@ -85,7 +77,6 @@ bot.command('spin', async (ctx) => {
 bot.on('message:dice', async (ctx) => {
   if (!ctx.message.dice || ctx.message.dice.emoji !== '🎰') return;
 
-  // Channel Comment (Reply) ဟုတ်မဟုတ် စစ်ဆေးခြင်း
   const isComment = ctx.message.reply_to_message || ctx.message.is_topic_message;
   if (!isComment) return;
 

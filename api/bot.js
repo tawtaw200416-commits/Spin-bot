@@ -12,12 +12,15 @@ const bot = new Bot(BOT_TOKEN);
 // Sleep Helper Function
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-// Slot Machine Rewards Mapping
+// Slot Machine Rewards Mapping (Telegram Dice Value တိကျမှန်ကန်သော တန်ဖိုးများ)
 const SLOT_REWARDS = {
   64: { reward: 0.001, name: '7 7 7' },
   43: { reward: 0.0005, name: '🍫 🍫 🍫' },
   22: { reward: 0.0003, name: '🍋 🍋 🍋' },
-  1:  { reward: 0.0001, name: '🍒 🍒 🍒' }
+  1:  { reward: 0.0001, name: '🍒 🍒 🍒' },
+  // တခါတရံ Telegram Dice တန်ဖိုးက အခြားနံပါတ်များလည်း ကျနိုင်သဖြင့် အားလုံးလွှမ်းခြုံရန်
+  16: { reward: 0.0003, name: '🍋 🍋 🍋' },
+  32: { reward: 0.0003, name: '🍋 🍋 🍋' }
 };
 
 // Error Handling
@@ -36,7 +39,6 @@ const deleteMessageLater = (ctx, chatId, messageId, delay = 5000) => {
     }
   })();
 
-  // Vercel / GramJS execution context မဟုတ်ပါကလည်း ctx.state ထဲမှ waitUntil ကို ယူသုံးမည်
   if (ctx.waitUntil) {
     ctx.waitUntil(promise);
   } else if (ctx.state && ctx.state.waitUntil) {
@@ -64,22 +66,19 @@ bot.command('spin', async (ctx) => {
   await ctx.replyWithDice('🎰');
 });
 
-// 3. Slot Machine Dice Handling
+// 3. Slot Machine Dice Handling (အချိန်မဆွဲဘဲ ချက်ချင်းတုံ့ပြန်ရန် sleep ဖြုတ်ထားသည်)
 bot.on('message:dice', async (ctx) => {
   if (!ctx.message.dice || ctx.message.dice.emoji !== '🎰') return;
 
   // Channel Comment (Reply) ဟုတ်မဟုတ် စစ်ဆေးခြင်း
   const isComment = ctx.message.reply_to_message || ctx.message.is_topic_message;
-  if (!isComment) return; // Comment မဟုတ်ရင် Balance မပေါင်းဘဲ ဒီအတိုင်း ထွက်သွားမည်
+  if (!isComment) return;
 
   const diceValue = ctx.message.dice.value;
   const userId = ctx.from.id;
   
   const rawUsername = ctx.from.username || ctx.from.first_name || `ID: ${userId}`;
   const displayName = ctx.from.username ? `@${ctx.from.username}` : rawUsername;
-
-  // Spin Animation ရပ်သည်နှင့် တိုက်ဆိုင်စေရန် 1.8 စက္ကန့် (1800ms) စောင့်မည်
-  await sleep(1800);
 
   let replyText = '';
   const winCombination = SLOT_REWARDS[diceValue];
@@ -160,7 +159,6 @@ module.exports = async (req, res, context) => {
       const host = req.headers.host || 'spin-bot-ten.vercel.app';
       const url = `https://${host}${req.url}`;
       
-      // Vercel ရဲ့ Background Process ကို မပိတ်စေဘဲ စောင့်ခိုင်းရန် context.waitUntil ထည့်သွင်းခြင်း
       const response = await handleWebhook(
         new Request(url, {
           method: 'POST',

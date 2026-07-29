@@ -12,7 +12,7 @@ const bot = new Bot(BOT_TOKEN);
 // Helper function to handle delays safely
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-// Slot Machine Rewards Mapping (Telegram Dice Values Mapping)
+// Slot Machine Rewards Mapping
 const SLOT_REWARDS = {
   64: { reward: 0.001,  name: '7 7 7' },
   43: { reward: 0.0005, name: '🍫 🍫 🍫' },
@@ -32,7 +32,7 @@ const deleteMessageLater = (ctx, chatId, messageId, delay = 5000) => {
     try {
       await ctx.api.deleteMessage(chatId, messageId);
     } catch (e) {
-      // Ignore deletion errors
+      // Ignore deletion errors (e.g. message already deleted or missing perms)
     }
   })();
 
@@ -69,7 +69,7 @@ bot.on('message:dice', async (ctx) => {
   if (!ctx.message.dice || ctx.message.dice.emoji !== '🎰') return;
 
   // Channel Comment (Reply) ဟုတ်မဟုတ် စစ်ဆေးခြင်း
-  const isComment = ctx.message.reply_to_message || ctx.message.is_topic_message || ctx.message.message_thread_id;
+  const isComment = ctx.message.reply_to_message || ctx.message.is_topic_message;
   if (!isComment) return;
 
   const diceValue = ctx.message.dice.value;
@@ -78,79 +78,72 @@ bot.on('message:dice', async (ctx) => {
   const rawUsername = ctx.from.username || ctx.from.first_name || `ID: ${userId}`;
   const displayName = ctx.from.username ? `@${ctx.from.username}` : rawUsername;
 
+  // 🚀 အဓိကပြင်ဆင်ချက်: Spin စက်လုံးဝ ရပ်သွားသည့် အချိန်အတိအကျ (၁.၈ စက္ကန့်) သို့ ပြောင်းပေးထားပါသည်
+  await sleep(1800);
+
+  // အနိုင်ရ/မရ စစ်ဆေးခြင်း (SLOT_REWARDS ထဲမှာ diceValue ရှိမှသာ အနိုင်ရမည်)
   const winCombination = SLOT_REWARDS[diceValue];
   const rewardAmount = winCombination ? winCombination.reward : 0;
 
-  // Background Async Processing (လူများလာပါက တန်းစီ၍ တိကျစွာ အလုပ်လုပ်ရန်)
-  const processSpin = async () => {
-    let finalBalance = 0;
+  let finalBalance = 0;
 
-    try {
-      // 1. လက်ရှိ User ၏ Balance ကို ရယူခြင်း
-      let { data: user } = await supabase
-        .from('users')
-        .select('balance')
-        .eq('telegram_id', userId)
-        .maybeSingle();
+  try {
+    // 1. လက်ရှိ User တစ်ယောက်ချင်းစီ၏ Balance ကို Database မှ သီးသန့် အမှန်အတိုင်း အရင်ဆွဲထုတ်ခြင်း
+    let { data: user, error: fetchErr } = await supabase
+      .from('users')
+      .select('balance')
+      .eq('telegram_id', userId)
+      .maybeSingle();
 
-      let currentBalance = user && user.balance ? parseFloat(user.balance) : 0;
+    let currentBalance = user && user.balance ? parseFloat(user.balance) : 0;
 
-      // 2. ပေါက်ပါက Balance တိုးပေးခြင်း (ဒဿမ ၆ နေရာ အတိအကျ)
-      if (rewardAmount > 0) {
-        currentBalance = Number((currentBalance + rewardAmount).toFixed(6));
-      }
-
-      finalBalance = currentBalance;
-
-      // 3. Supabase Database ထဲသို့ Update ပြန်လုပ်ခြင်း
-      await supabase.from('users').upsert({
-        telegram_id: userId,
-        username: rawUsername,
-        balance: finalBalance
-      }, { onConflict: 'telegram_id' });
-
-    } catch (error) {
-      console.error("Supabase Transaction Error:", error);
+    // 2. အကယ်၍ အနိုင်ရမှသာ ထို User ၏ လက်ရှိ Balance ထဲသို့ တိကျစွာ ပေါင်းပေးမည် (မနိုင်ပါက လက်ရှိအတိုင်းသာ ထားမည်)
+    if (rewardAmount > 0) {
+      currentBalance = Math.round((currentBalance + rewardAmount) * 1000000) / 1000000;
     }
 
-    // 🎯 Slot Animation စက်လုံးဝ ရပ်သွားသည့် အချိန်အတိအကျ (၁.၈ စက္ကန့်)
-    await sleep(1800);
+    finalBalance = currentBalance;
 
-    // Telegram Message တည်ဆောက်ခြင်း
-    let replyText = '';
+    // 3. Database သို့ ထို User ၏ နှုန်းထားကိုသာ Error မဖြစ်စေဘဲ သီးသန့် သိမ်းဆည်းခြင်း
+    await supabase.from('users').upsert({
+      telegram_id: userId,
+      username: rawUsername,
+      balance: finalBalance
+    }, { onConflict: 'telegram_id' });
 
-    if (winCombination) {
-      replyText = `🎉 <b>Congratulations ${displayName}!</b>\n` +
-        `<b>You got ${winCombination.name} and received ${winCombination.reward} GRAM!</b>\n` +
-        `<blockquote><b>Balance = <code>${finalBalance.toFixed(6)} 💎</code></b></blockquote>\n` +
-        `<b>Mini 0.05 GRAM💰,📢@Rampage528</b>`;
-    } else {
-      replyText = `❌ <b>Try again ${displayName}! Better luck next time.</b>\n` +
-        `<blockquote><b>Balance = <code>${finalBalance.toFixed(6)} 💎</code></b></blockquote>\n` +
-        `<b>Mini 0.05 GRAM💰,📢@Rampage528</b>`;
-    }
-
-    // Reply Options
-    const replyOptions = { 
-      parse_mode: 'HTML',
-      reply_to_message_id: ctx.message.message_id
-    };
-    
-    if (ctx.message.message_thread_id) {
-      replyOptions.message_thread_id = ctx.message.message_thread_id;
-    }
-
-    // စာပြန်ပို့ခြင်းနှင့် ၅ စက္ကန့်အကြာတွင် ဖျက်ခြင်း
-    const sentMsg = await ctx.reply(replyText, replyOptions);
-    deleteMessageLater(ctx, ctx.chat.id, sentMsg.message_id, 5000);
-  };
-
-  // Vercel / Cloudflare Environment များတွင် Task ကျန်မခဲ့စေရန် waitUntil ဖြင့် စီမံခြင်း
-  if (ctx.waitUntil) {
-    ctx.waitUntil(processSpin());
-  } else {
-    await processSpin();
+  } catch (error) {
+    console.error("Supabase Transaction Error:", error);
   }
+
+  // Telegram Message တည်ဆောက်ခြင်း
+  let replyText = '';
+
+  if (winCombination) {
+    // ပေါက်သည့်အကွက်များ (64, 43, 22, 1) ကျမှသာ အောက်ပါ စာသားထွက်မည်
+    replyText = `🎉 <b>Congratulations ${displayName}!</b>\n` +
+      `<b>You got ${winCombination.name} and received ${winCombination.reward} GRAM!</b>\n` +
+      `<blockquote><b>Balance = <code>${finalBalance.toFixed(6)} 💎</code></b></blockquote>\n` +
+      `<b>Mini 0.05 GRAM💰,📢@Rampage528</b>`;
+  } else {
+    // မပေါက်သည့် အကွက်များအတွက် ဘာမှ မပေါင်းဘဲ လက်ရှိ Balance ကိုသာ မှန်ကန်စွာပြမည်
+    replyText = `❌ <b>Try again ${displayName}! Better luck next time.</b>\n` +
+      `<blockquote><b>Balance = <code>${finalBalance.toFixed(6)} 💎</code></b></blockquote>\n` +
+      `<b>Mini 0.05 GRAM💰,📢@Rampage528</b>`;
+  }
+
+  // Reply Options
+  const replyOptions = { 
+    parse_mode: 'HTML',
+    reply_to_message_id: ctx.message.message_id
+  };
+  
+  if (ctx.message.message_thread_id) {
+    replyOptions.message_thread_id = ctx.message.message_thread_id;
+  }
+
+  // စာပြန်ပို့ခြင်းနှင့် ခဏအကြာတွင် ဖျက်ခြင်း
+  const sentMsg = await ctx.reply(replyText, replyOptions);
+  deleteMessageLater(ctx, ctx.chat.id, sentMsg.message_id, 5000);
 });
 
 // Vercel Serverless Native Handler

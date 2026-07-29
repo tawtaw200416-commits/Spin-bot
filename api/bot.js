@@ -12,7 +12,7 @@ const bot = new Bot(BOT_TOKEN);
 // Helper function to handle delays safely
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-// Slot Machine Rewards Mapping
+// Slot Machine Rewards Mapping (Dice values & Emojis aligned properly)
 const SLOT_REWARDS = {
   64: { reward: 0.001,  name: '7 7 7' },
   43: { reward: 0.0005, name: '🍫 🍫 🍫' },
@@ -81,7 +81,7 @@ bot.on('message:dice', async (ctx) => {
   const winCombination = SLOT_REWARDS[diceValue];
   const rewardAmount = winCombination ? winCombination.reward : 0;
 
-  // 🚀 အမြန်ဆုံးဖြစ်အောင် DB Update Process ကို Spin Animation စောင့်နေစဉ် တိုင်ပြိုင်တည်း စတင်ခေါ်ယူပါမည်
+  // DB update ကို Spin လှည့်နေစဉ်နောက်ကွယ်မှ အပြိုင်ခေါ်ယူခြင်း
   const dbPromise = (async () => {
     let finalBalance = 0;
     try {
@@ -94,6 +94,7 @@ bot.on('message:dice', async (ctx) => {
       let currentBalance = user && user.balance ? parseFloat(user.balance) : 0;
 
       if (rewardAmount > 0) {
+        // ပေးထားသော ပမာဏအတိုင်း တိကျစွာ ပေါင်းခြင်း
         currentBalance = Number((currentBalance + rewardAmount).toFixed(6));
       }
 
@@ -111,11 +112,10 @@ bot.on('message:dice', async (ctx) => {
     return finalBalance;
   })();
 
-  // Telegram Slot Machine Animation အချိန်အတိအကျ (၁.၅ စက္ကန့်) နှောင့်နှေးပေးပါမည်
-  // DB query နှင့် animation ကြာချိန်ကို တစ်ပြိုင်တည်း ပြေးခိုင်းထားသည့်အတွက် Spin ရပ်တာနှင့် တန်းပြီး စာပြန်ပေးပါမည်
+  // Slot Animation အတိအကျ ကွက်တိ ရပ်တန့်မည့်အချိန် (၂.၂ စက္ကန့်)
   const [finalBalance] = await Promise.all([
     dbPromise,
-    sleep(1500)
+    sleep(2200)
   ]);
 
   // Telegram Message တည်ဆောက်ခြင်း

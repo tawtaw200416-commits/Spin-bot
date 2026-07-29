@@ -12,31 +12,12 @@ const bot = new Bot(BOT_TOKEN);
 // Sleep Helper Function
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-// Slot Machine Rewards Mapping (Telegram Dice Values အားလုံးအတွက် တိကျမှန်ကန်သော တန်ဖိုးများ)
+// Slot Machine Rewards Mapping (၃ ခုတန်းသော အမှန်ကန်ဆုံး တန်ဖိုး ၄ ခုသာ)
 const SLOT_REWARDS = {
-  // 🍒 Cherry Combinations (Value 1 to 3)
-  1: { reward: 0.0001, name: '🍒 🍒 🍒' },
-  2: { reward: 0.0001, name: '🍒 🍒 🍒' },
-  3: { reward: 0.0001, name: '🍒 🍒 🍒' },
-
-  // 🍋 Lemon Combinations (Value 22 etc.)
-  16: { reward: 0.0003, name: '🍋 🍋 🍋' },
-  22: { reward: 0.0003, name: '🍋 🍋 🍋' },
-  32: { reward: 0.0003, name: '🍋 🍋 🍋' },
-
-  // 🍫 Chocolate Combinations (Value 43 etc.)
-  41: { reward: 0.0005, name: '🍫 🍫 🍫' },
-  42: { reward: 0.0005, name: '🍫 🍫 🍫' },
+  64: { reward: 0.001, name: '7 7 7' },
   43: { reward: 0.0005, name: '🍫 🍫 🍫' },
-
-  // 🎰 BAR Combinations (BAR BAR BAR - ပုံထဲကအတိုင်း ဆုကြေးပေးရန်)
-  58: { reward: 0.0002, name: 'BAR BAR BAR' },
-  59: { reward: 0.0002, name: 'BAR BAR BAR' },
-  60: { reward: 0.0002, name: 'BAR BAR BAR' },
-
-  // 7 7 7 Combinations (Value 64)
-  63: { reward: 0.001, name: '7 7 7' },
-  64: { reward: 0.001, name: '7 7 7' }
+  22: { reward: 0.0003, name: '🍋 🍋 🍋' },
+  1:  { reward: 0.0001, name: '🍒 🍒 🍒' }
 };
 
 // Error Handling
@@ -82,7 +63,7 @@ bot.command('spin', async (ctx) => {
   await ctx.replyWithDice('🎰');
 });
 
-// 3. Slot Machine Dice Handling (အချိန်မဆွဲဘဲ ချက်ချင်းတုံ့ပြန်ရန် sleep ဖြုတ်ထားသည်)
+// 3. Slot Machine Dice Handling
 bot.on('message:dice', async (ctx) => {
   if (!ctx.message.dice || ctx.message.dice.emoji !== '🎰') return;
 

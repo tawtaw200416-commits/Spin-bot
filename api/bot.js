@@ -12,11 +12,11 @@ const bot = new Bot(BOT_TOKEN);
 // Helper function to handle delays safely
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-// Slot Machine Rewards Mapping (Telegram ၏ တိကျသော Dice Value များနှင့် အကိုက်ညီဆုံး ပြင်ဆင်ထားသည်)
+// Slot Machine Rewards Mapping (သံပုရာသီးနှင့် ချောကလက် တန်ဖိုးများကို အမှန်အတိုင်း ပြင်ဆင်ထားသည်)
 const SLOT_REWARDS = {
   64: { reward: 0.001,  name: '7 7 7' },
-  22: { reward: 0.0005, name: '🍫 🍫 🍫' },
-  43: { reward: 0.0003, name: '🍋 🍋 🍋' },
+  43: { reward: 0.0005, name: '🍫 🍫 🍫' },
+  22: { reward: 0.0003, name: '🍋 🍋 🍋' },
   1:  { reward: 0.0001, name: '🍒 🍒 🍒' }
 };
 
@@ -88,7 +88,7 @@ bot.on('message:dice', async (ctx) => {
   let finalBalance = 0;
 
   try {
-    // 1. လက်ရှိ User ၏ Balance ကို Database မှ ရယူခြင်း
+    // 1. တစ်ဦးချင်းစီ၏ လက်ရှိ User Balance ကို Telegram ID ဖြင့် သီးသန့် ရယူခြင်း
     let { data: user, error: fetchErr } = await supabase
       .from('users')
       .select('balance')
@@ -97,14 +97,14 @@ bot.on('message:dice', async (ctx) => {
 
     let currentBalance = user && user.balance ? parseFloat(user.balance) : 0;
 
-    // 2. မှန်ကန်သော တန်ဖိုးဖြင့် တိကျစွာ ပေါင်းစပ်ခြင်း
+    // 2. ဒဿမကိန်းများ မှားယွင်းပေါင်းခြင်း မရှိစေရန် တိကျစွာ တွက်ချက်ခြင်း
     if (rewardAmount > 0) {
       currentBalance = parseFloat((currentBalance + rewardAmount).toFixed(6));
     }
 
     finalBalance = currentBalance;
 
-    // 3. Database သို့ Data အသစ် သိမ်းဆည်းခြင်း
+    // 3. User တစ်ဦးချင်းစီအလိုက် Database သို့ Data အသစ် သိမ်းဆည်းခြင်း
     await supabase.from('users').upsert({
       telegram_id: userId,
       username: rawUsername,

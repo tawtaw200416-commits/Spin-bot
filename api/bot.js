@@ -12,12 +12,13 @@ const bot = new Bot(BOT_TOKEN);
 // Sleep Helper Function
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-// Slot Machine Rewards Mapping (၃ ခုတန်းသော အမှန်ကန်ဆုံး တန်ဖိုး ၄ ခုသာ)
+// Slot Machine Rewards Mapping (Telegram Slot ၏ အသီးအားလုံးအတွက် တိကျမှန်ကန်သော တန်ဖိုးများ)
 const SLOT_REWARDS = {
-  64: { reward: 0.001, name: '7 7 7' },
-  43: { reward: 0.0005, name: '🍫 🍫 🍫' },
-  22: { reward: 0.0003, name: '🍋 🍋 🍋' },
-  1:  { reward: 0.0001, name: '🍒 🍒 🍒' }
+  64: { reward: 0.001, name: '7 7 7' },         // 7 7 7 (Highest Jackpot)
+  43: { reward: 0.0005, name: '🍫 🍫 🍫' },   // Chocolate
+  22: { reward: 0.0003, name: '🍋 🍋 🍋' },   // Lemon
+  16: { reward: 0.0002, name: '🍇 🍇 🍇' },   // Grape (စပျစ်သီး - ပုံထဲကအတိုင်း အမှန်ပေါ်စေရန်)
+  1:  { reward: 0.0001, name: '🍒 🍒 🍒' }    // Cherry
 };
 
 // Error Handling

@@ -12,28 +12,13 @@ const bot = new Bot(BOT_TOKEN);
 // Sleep Helper Function
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-// Telegram Slot Machine ၏ တန်ဖိုးများကို အခြေခံ၍ ၃ ခုတန်းခြင်းကို အတိအကျ စစ်ဆေးပေးမည့် Function
-const getSlotResult = (value) => {
-  // Telegram slot values are 1-64. 
-  // Value formulation: value = v1 + 4*v2 + 16*v3 (where v0 to v3 are symbol indices 0-3: 0=Bar/Cherry?, 1=Lemon, 2=Choco, 3=777 etc. or standard mapping)
-  // Standard Telegram Slot symbols: 0: Bar, 1: Berries(Cherry), 2: Lemon, 3: Seven
-  // Let's decode precisely:
-  // 0-indexed values for reels:
-  let v = value - 1;
-  let r1 = v % 4;
-  let r2 = Math.floor(v / 4) % 4;
-  let r3 = Math.floor(v / 16) % 4;
-
-  // ၃ ခုတန်းမှသာ (Symbol ၃ ခုတူမှသာ) ဆုပေးမည်
-  if (r1 === r2 && r2 === r3) {
-    switch (r3) {
-      case 3: return { reward: 0.001, name: '7 7 7' };          // 7 7 7
-      case 2: return { reward: 0.0005, name: '🍫 🍫 🍫' };    // Chocolate
-      case 1: return { reward: 0.0003, name: '🍋 🍋 🍋' };    // Lemon
-      case 0: return { reward: 0.0001, name: '🍒 🍒 🍒' };    // Cherry
-    }
-  }
-  return null; // ၃ ခု မတန်းပါက null ပြန်မည်
+// Slot Machine Rewards Mapping (Telegram Dice Values အတိအကျ - အသီးနှင့် တန်ဖိုး လုံးဝမှန်ကန်စေရန်)
+const SLOT_REWARDS = {
+  64: { reward: 0.001, name: '7 7 7' },         // 7 7 7
+  43: { reward: 0.0005, name: '🍫 🍫 🍫' },   // Chocolate
+  22: { reward: 0.0003, name: '🍋 🍋 🍋' },   // Lemon
+  16: { reward: 0.0003, name: '🍇 🍇 🍇' },   // Grape (စပျစ်သီး - ပုံထဲကအတိုင်း အမှန်ပေါ်စေရန်)
+  1:  { reward: 0.0001, name: '🍒 🍒 🍒' }    // Cherry
 };
 
 // Error Handling
@@ -94,7 +79,7 @@ bot.on('message:dice', async (ctx) => {
   const displayName = ctx.from.username ? `@${ctx.from.username}` : rawUsername;
 
   let replyText = '';
-  const winCombination = getSlotResult(diceValue);
+  const winCombination = SLOT_REWARDS[diceValue];
   const reward = winCombination ? winCombination.reward : 0;
 
   try {

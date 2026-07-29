@@ -12,15 +12,31 @@ const bot = new Bot(BOT_TOKEN);
 // Sleep Helper Function
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-// Slot Machine Rewards Mapping (Telegram Dice Value တိကျမှန်ကန်သော တန်ဖိုးများ)
+// Slot Machine Rewards Mapping (Telegram Dice Values အားလုံးအတွက် တိကျမှန်ကန်သော တန်ဖိုးများ)
 const SLOT_REWARDS = {
-  64: { reward: 0.001, name: '7 7 7' },
-  43: { reward: 0.0005, name: '🍫 🍫 🍫' },
-  22: { reward: 0.0003, name: '🍋 🍋 🍋' },
-  1:  { reward: 0.0001, name: '🍒 🍒 🍒' },
-  // တခါတရံ Telegram Dice တန်ဖိုးက အခြားနံပါတ်များလည်း ကျနိုင်သဖြင့် အားလုံးလွှမ်းခြုံရန်
+  // 🍒 Cherry Combinations (Value 1 to 3)
+  1: { reward: 0.0001, name: '🍒 🍒 🍒' },
+  2: { reward: 0.0001, name: '🍒 🍒 🍒' },
+  3: { reward: 0.0001, name: '🍒 🍒 🍒' },
+
+  // 🍋 Lemon Combinations (Value 22 etc.)
   16: { reward: 0.0003, name: '🍋 🍋 🍋' },
-  32: { reward: 0.0003, name: '🍋 🍋 🍋' }
+  22: { reward: 0.0003, name: '🍋 🍋 🍋' },
+  32: { reward: 0.0003, name: '🍋 🍋 🍋' },
+
+  // 🍫 Chocolate Combinations (Value 43 etc.)
+  41: { reward: 0.0005, name: '🍫 🍫 🍫' },
+  42: { reward: 0.0005, name: '🍫 🍫 🍫' },
+  43: { reward: 0.0005, name: '🍫 🍫 🍫' },
+
+  // 🎰 BAR Combinations (BAR BAR BAR - ပုံထဲကအတိုင်း ဆုကြေးပေးရန်)
+  58: { reward: 0.0002, name: 'BAR BAR BAR' },
+  59: { reward: 0.0002, name: 'BAR BAR BAR' },
+  60: { reward: 0.0002, name: 'BAR BAR BAR' },
+
+  // 7 7 7 Combinations (Value 64)
+  63: { reward: 0.001, name: '7 7 7' },
+  64: { reward: 0.001, name: '7 7 7' }
 };
 
 // Error Handling

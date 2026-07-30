@@ -12,23 +12,19 @@ const bot = new Bot(BOT_TOKEN);
 // Sleep Helper Function
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-// Telegram Slot Machine ၏ တရားဝင် ရလဒ်များကို တိကျစွာ ဖော်ထုတ်သည့် Function (အသစ်ပြင်ဆင်ပြီး)
+// Telegram Slot Machine ၏ တရားဝင် ရလဒ်များနှင့် တောင်းဆိုထားသော ဆုကြေးနှုန်းထားအမှန်များ
 const getSlotResult = (value) => {
-  // Telegram ၏ တရားဝင်တန်ဖိုး (1 မှ 64 ထိ)
   let v = value - 1;
-  let r1 = v % 4;             // ပထမအသီး
-  let r2 = Math.floor(v / 4) % 4; // ဒုတိယအသီး
-  let r3 = Math.floor(v / 16) % 4;// တတိယအသီး
+  let r1 = v % 4;             
+  let r2 = Math.floor(v / 4) % 4; 
+  let r3 = Math.floor(v / 16) % 4;
 
-  // 0: Cherry, 1: Lemon, 2: Grape, 3: BAR / 7
-  // ပုံမှန်အားဖြင့် Telegram slot တွင် 0=Bar, 1=Berries/Grapes, 2=Lemon, 3=Cherry (သို့မဟုတ် ဗားရှင်းအလိုက် ပြောင်းလဲတတ်ပါသည်)
-  // ယခု ပုံများတွင် တွေ့ရသည့် အသီးအလိုက် အတိအကျ ကိုက်ညီစေရန် ညှိပေးထားပါသည်:
-  
+  // တောင်းဆိုထားသော တန်ဖိုးအမှန်များအတိုင်း ချိန်ညှိထားခြင်း
   const symbols = {
-    0: { name: '🏷️ BAR BAR BAR', reward: 0.001 },
-    1: { name: '🍇 🍇 🍇',       reward: 0.0005 },
-    2: { name: '🍋 🍋 🍋',       reward: 0.0003 },
-    3: { name: '🍒 🍒 🍒',       reward: 0.0001 }
+    3: { name: '🎰 🎰 🎰', reward: 0.001 },   // 🎰 = 0.001 GRAM
+    1: { name: '🍫 🍫 🍫', reward: 0.0005 },  // 🍫 = 0.0005 GRAM
+    2: { name: '🍋 🍋 🍋', reward: 0.0003 },  // 🍋 = 0.0003 GRAM
+    0: { name: '🍒 🍒 🍒', reward: 0.0001 }   // 🍒 = 0.0001 GRAM
   };
 
   // ၃ ခုတန်းမှသာ ဆုပေးမည်

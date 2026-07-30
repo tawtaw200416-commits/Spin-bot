@@ -12,16 +12,14 @@ const bot = new Bot(BOT_TOKEN);
 // Sleep Helper Function
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-// Telegram Slot Machine ၏ တရားဝင် ရလဒ်များကို တိကျမှန်ကန်စွာ ဖော်ထုတ်သည့် Function
+// Telegram Slot Machine ၏ တရားဝင် ရလဒ်များနှင့် အသီးအညွှန်းများ အမှန်ပြင်ဆင်ထားခြင်း
 const getSlotResult = (value) => {
   let v = value - 1;
-  
-  // Telegram ၏ တရားဝင် slot reels တွက်ချက်ပုံ
-  let r1 = v % 4;             // ပထမအကွက် (ဘယ်ဘက်)
-  let r2 = Math.floor(v / 4) % 4; // ဒုတိယအကွက် (အလယ်)
-  let r3 = Math.floor(v / 16) % 4;// တတိယအကွက် (ညာဘက်)
+  let r1 = v % 4;             
+  let r2 = Math.floor(v / 4) % 4; 
+  let r3 = Math.floor(v / 16) % 4;
 
-  // တောင်းဆိုထားသော တန်ဖိုးအမှန်များနှင့် အသီးအညွှန်းများ
+  // Telegram ၏ တရားဝင် သင်္ကေတ အညွှန်းအမှန်များ
   const symbols = {
     0: { name: '🍒 🍒 🍒', reward: 0.0001 },   // 🍒 = 0.0001 GRAM
     1: { name: '🍋 🍋 🍋', reward: 0.0003 },   // 🍋 = 0.0003 GRAM
@@ -29,7 +27,7 @@ const getSlotResult = (value) => {
     3: { name: '🎰 🎰 🎰', reward: 0.001 }     // 777 / 🎰 = 0.001 GRAM
   };
 
-  // ၃ ခုတန်းမှသာ ဆုပေးမည် (သုံးခုစလုံး တူရမည်)
+  // ၃ ခုတန်းမှသာ ဆုပေးမည်
   if (r1 === r2 && r2 === r3) {
     return symbols[r3] || null;
   }

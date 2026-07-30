@@ -12,19 +12,19 @@ const bot = new Bot(BOT_TOKEN);
 // Sleep Helper Function
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-// Telegram Slot Machine ၏ တရားဝင် တန်ဖိုးများကို အခြေခံသော တိုက်ရိုက် စစ်ဆေးသည့် Function
+// Telegram Slot Machine ၏ တရားဝင် တန်ဖိုးများကို အခြေခံသော တိုက်ရိုက် စစ်ဆေးသည့် Function (အမှန်ပြင်ဆင်ပြီး)
 const getSlotResult = (value) => {
   let v = value - 1;
   let r1 = v % 4;
   let r2 = Math.floor(v / 4) % 4;
   let r3 = Math.floor(v / 16) % 4;
 
-  // ၃ ခုတန်းမှသာ ဆုပေးမည် (0: Cherry, 1: Lemon, 2: Chocolate, 3: BAR/7)
+  // ၃ ခုတန်းမှသာ ဆုပေးမည် (0: Cherry, 1: Lemon, 2: Grape/Chocolate, 3: BAR/7)
   if (r1 === r2 && r2 === r3) {
     if (r3 === 0) return { reward: 0.0001, name: '🍒 🍒 🍒' };
     if (r3 === 1) return { reward: 0.0003, name: '🍋 🍋 🍋' };
-    if (r3 === 2) return { reward: 0.0005, name: '🍫 🍫 🍫' };
-    if (r3 === 3) return { reward: 0.001,  name: '🏷️ BAR BAR BAR' };
+    if (r3 === 2) return { reward: 0.0005, name: '🍇 🍇 🍇' };
+    if (r3 === 3) return { reward: 0.001,  name: '7️⃣ 7️⃣ 7️⃣' };
   }
 
   return null;

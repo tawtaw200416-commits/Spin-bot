@@ -12,17 +12,17 @@ const bot = new Bot(BOT_TOKEN);
 // Sleep Helper Function
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-// Telegram Slot Machine ၏ တရားဝင် ရလဒ်များနှင့် တောင်းဆိုထားသော ဆုကြေးနှုန်းထားအမှန်များ
+// Telegram Slot Machine ၏ တရားဝင် ရလဒ်များနှင့် စပျစ်သီး/ချိုင့်ခွက် အမှန်ပြင်ဆင်ထားသော Function
 const getSlotResult = (value) => {
   let v = value - 1;
   let r1 = v % 4;             
   let r2 = Math.floor(v / 4) % 4; 
   let r3 = Math.floor(v / 16) % 4;
 
-  // တောင်းဆိုထားသော တန်ဖိုးအမှန်များအတိုင်း ချိန်ညှိထားခြင်း
+  // ပုံထဲပါအတိုင်း စပျစ်သီး/ချိုင့်ခွက်အတွက် 🍇 🍇 🍇 နှင့် ဆုကြေး 0.0005 GRAM ဖြင့် အတိအကျ ချိန်ညှိထားသည်
   const symbols = {
     3: { name: '🎰 🎰 🎰', reward: 0.001 },   // 🎰 = 0.001 GRAM
-    1: { name: '🍫 🍫 🍫', reward: 0.0005 },  // 🍫 = 0.0005 GRAM
+    1: { name: '🍇 🍇 🍇', reward: 0.0005 },  // 🍇 = 0.0005 GRAM (စပျစ်သီး)
     2: { name: '🍋 🍋 🍋', reward: 0.0003 },  // 🍋 = 0.0003 GRAM
     0: { name: '🍒 🍒 🍒', reward: 0.0001 }   // 🍒 = 0.0001 GRAM
   };

@@ -19,6 +19,7 @@ const getSlotResult = (value) => {
   let r2 = Math.floor(v / 4) % 4;
   let r3 = Math.floor(v / 16) % 4;
 
+  // Telegram Slot တန်ဖိုးများအလိုက် အသီးနှင့် ဆုကြေးများ
   // 0: Cherry, 1: Lemon, 2: Grape, 3: BAR / 7
   const symbols = ['🍒 🍒 🍒', '🍋 🍋 🍋', '🍇 🍇 🍇', '7️⃣ 7️⃣ 7️⃣'];
   const rewards = [0.0001, 0.0003, 0.0005, 0.001];

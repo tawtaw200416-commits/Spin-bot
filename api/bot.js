@@ -22,9 +22,9 @@ const getSlotResult = (value) => {
 
   // 777 / BAR / အသီးများအတွက် တရားဝင် သင်္ကေတနှင့် ဆုကြေးများ
   const symbols = {
-    0: { name: '🏷️ BAR BAR BAR', reward: 0.0005 },    // BAR = 0.0005 GRAM
-    1: { name: '🍇 🍇 🍇',       reward: 0.0003 },   // Grape = 0.0003 GRAM
-    2: { name: '🍋 🍋 🍋',       reward: 0.0004 },   // Lemon = 0.0004 GRAM
+    0: { name: '🏷️ BAR BAR BAR', reward: 0.00055 },    // BAR = 0.00055 GRAM
+    1: { name: '🍇 🍇 🍇',       reward: 0.00035 },   // Grape = 0.00035 GRAM
+    2: { name: '🍋 🍋 🍋',       reward: 0.00045 },   // Lemon = 0.00045 GRAM
     3: { name: '7️⃣ 7️⃣ 7️⃣ (Jackpot)', reward: 0.001 } // 777 = 0.001 GRAM (သို့မဟုတ် လိုချင်သောတန်ဖိုး)
   };
 

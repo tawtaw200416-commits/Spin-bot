@@ -24,7 +24,7 @@ const getSlotResult = (value) => {
   const symbols = {
     0: { name: '🏷️ BAR BAR BAR', reward: 0.00075 },    // BAR = 0.00075 GRAM
     1: { name: '🍇 🍇 🍇',       reward: 0.00035 },   // Grape = 0.00035 GRAM
-    2: { name: '🍋 🍋 🍋',       reward: 0.0006 },   // Lemon = 0.0006 GRAM
+    2: { name: '🍋 🍋 🍋',       reward: 0.00065 },   // Lemon = 0.00065 GRAM
     3: { name: '7️⃣ 7️⃣ 7️⃣ (Jackpot)', reward: 0.001 } // 777 = 0.001 GRAM (သို့မဟုတ် လိုချင်သောတန်ဖိုး)
   };
 

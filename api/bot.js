@@ -25,7 +25,7 @@ const getSlotResult = (value) => {
     0: { name: '🏷️ BAR BAR BAR', reward: 0.000805 },    // BAR = 0.000805 GRAM
     1: { name: '🍇 🍇 🍇',       reward: 0.000205 },   // Grape = 0.000205 GRAM
     2: { name: '🍋 🍋 🍋',       reward: 0.000405 },   // Lemon = 0.000405 GRAM
-    3: { name: '7️⃣ 7️⃣ 7️⃣ (Jackpot)', reward: 0.00185 } // 777 = 0.00185 GRAM (သို့မဟုတ် လိုချင်သောတန်ဖိုး)
+    3: { name: '7️⃣ 7️⃣ 7️⃣ (Jackpot)', reward: 0.00180 } // 777 = 0.00180 GRAM (သို့မဟုတ် လိုချင်သောတန်ဖိုး)
   };
 
   // ၃ ခုတန်းမှသာ ဆုပေးမည်

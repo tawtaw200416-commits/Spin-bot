@@ -14,18 +14,21 @@ const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 // Telegram Slot Machine ၏ 777 အပါအဝင် တရားဝင် ရလဒ်များအားလုံး တိကျစွာ တွက်ချက်သည့် Function
 const getSlotResult = (value) => {
+  // Telegram ၏ တရားဝင်တန်ဖိုး (1 မှ 64 ထိ)
   let v = value - 1;
   let r1 = v % 4;             
   let r2 = Math.floor(v / 4) % 4; 
   let r3 = Math.floor(v / 16) % 4;
 
+  // 777 / BAR / အသီးများအတွက် တရားဝင် သင်္ကေတနှင့် ဆုကြေးများ
   const symbols = {
-    0: { name: '🏷️ BAR BAR BAR', reward: 0.00200 },    
-    1: { name: '🍇 🍇 🍇',       reward: 0.00030 },   
-    2: { name: '🍋 🍋 🍋',       reward: 0.00050 },   
-    3: { name: '7️⃣ 7️⃣ 7️⃣ (Jackpot)', reward: 0.00300 } 
+    0: { name: '🏷️ BAR BAR BAR', reward: 0.00200 },    // BAR = 0.0020 GRAM
+    1: { name: '🍇 🍇 🍇',       reward: 0.00030 },   // Grape = 0.00030 GRAM
+    2: { name: '🍋 🍋 🍋',       reward: 0.00050 },   // Lemon = 0.00050 GRAM
+    3: { name: '7️⃣ 7️⃣ 7️⃣ (Jackpot)', reward: 0.00300 } // 777 = 0.00300 GRAM (သို့မဟုတ် လိုချင်သောတန်ဖိုး)
   };
 
+  // ၃ ခုတန်းမှသာ ဆုပေးမည်
   if (r1 === r2 && r2 === r3) {
     return symbols[r3] || null;
   }
@@ -56,7 +59,7 @@ const deleteMessageLater = (ctx, chatId, messageId, delay = 5000) => {
   }
 };
 
-// 1. /start Command (ပုံမှန်အတိုင်း စာသားဖြင့် ကြိုဆိုရန်)
+// 1. /start Command
 bot.command('start', async (ctx) => {
   const userId = ctx.from?.id;
   const rawUsername = ctx.from?.username || ctx.from?.first_name || `ID: ${userId}`;
@@ -76,40 +79,7 @@ bot.command('spin', async (ctx) => {
   await ctx.replyWithDice('🎰');
 });
 
-// ==========================================
-// 3. Admin (1793453606) သီးသန့် ပုံနှင့် လင့်ခ်ပို့မည့် Command
-// ==========================================
-bot.command('sendpic', async (ctx) => {
-  const userId = ctx.from?.id;
-  
-  // Admin ID ဟုတ်မဟုတ် စစ်ဆေးခြင်း
-  if (userId !== 1793453606) {
-    return ctx.reply('❌ This command is restricted.');
-  }
-
-  // ⚙️ ပြချင်သော ပုံလိပ်စာ (Image URL)
-  const imageUrl = 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe'; 
-
-  // ⚙️ ပြချင်သော စာသားနှင့် လင့်ခ်များ
-  const captionText = `⚠️ <b>Making New Real Upi Bot (Refer&Earn)</b>\n\n` +
-    `💵 <b>Price to add - ₹1k</b>\n\n` +
-    `⚠️ <b>Device verification Bot , One Device One time Only✅✅</b>\n\n` +
-    `🔗 <a href="https://www.example.com">Website သို့ ဝင်ရန်</a>`;
-
-  await ctx.replyWithPhoto(imageUrl, {
-    caption: captionText,
-    parse_mode: 'HTML',
-    reply_markup: {
-      inline_keyboard: [
-        [
-          { text: '🔗 ဝင်ရောက်ရန် (Website)', url: 'https://www.example.com' }
-        ]
-      ]
-    }
-  });
-});
-
-// 4. Slot Machine Dice Handling
+// 3. Slot Machine Dice Handling
 bot.on('message:dice', async (ctx) => {
   if (!ctx.message.dice || ctx.message.dice.emoji !== '🎰') return;
 

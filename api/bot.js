@@ -80,24 +80,23 @@ bot.command('spin', async (ctx) => {
 });
 
 // ==========================================
-// 3. Admin (1793453606) သီးသန့် User တွေဆီသို့ Broadcast ပို့မည့် Command
+// 3. Admin (1793453606) သီးသန့် Broadcast ပို့မည့် Command
 // ==========================================
 bot.command('broadcast', async (ctx) => {
   const userId = ctx.from?.id;
   
-  // Admin ဟုတ်မဟုတ် တိကျစွာ စစ်ဆေးခြင်း
   if (userId !== 1793453606) {
     return ctx.reply('❌ This command is restricted.');
   }
 
-  // ⚙️ သုံးစွဲသူများဆီ ပို့မည့် ကြော်ငြာစာသားနှင့် လင့်ခ်
-  const messageText = `⚠️ <b>Making New Real Upi Bot (Refer&Earn)</b>\n\n` +
-    `💵 <b>Price to add - ₹1k</b>\n\n` +
-    `⚠️ <b>Device verification Bot , One Device One time Only✅✅</b>\n\n` +
-    `🔗 https://t.me/SameIP_Bot`;
+  // Admin ရိုက်လိုက်သော စာသားကို ယူခြင်း (ဥပမာ - /broadcast စာသား)
+  const customMessage = ctx.match;
+
+  if (!customMessage) {
+    return ctx.reply('⚠️ ကျေးဇူးပြု၍ ပို့လိုသော စာသားကို ထည့်ပါ။\n\n<b>ပုံစံ -</b> <code>/broadcast your_message_here</code>', { parse_mode: 'HTML' });
+  }
 
   try {
-    // Supabase မှ Bot အသုံးပြုထားသော User ID အားလုံးကို ဆွဲထုတ်ခြင်း
     const { data: users, error } = await supabase
       .from('users')
       .select('telegram_id');
@@ -111,21 +110,19 @@ bot.command('broadcast', async (ctx) => {
     let successCount = 0;
     let failCount = 0;
 
-    // User တစ်ဦးချင်းစီ၏ Chat ထဲသို့ စာသားနှင့် Link Preview တိုက်ရိုက် ပို့ခြင်း
     for (const user of users) {
       try {
-        await ctx.api.sendMessage(user.telegram_id, messageText, {
+        await ctx.api.sendMessage(user.telegram_id, customMessage, {
           parse_mode: 'HTML',
           disable_web_page_preview: false
         });
         successCount++;
-        await sleep(50); // Telegram Rate Limit မမိစေရန် အနည်းငယ်စောင့်ခြင်း
+        await sleep(50); 
       } catch (err) {
-        failCount++; // Bot ကို Block ထားသော User များအတွက်
+        failCount++; 
       }
     }
 
-    // ပို့ပြီးပါက Status စာသားကို အောင်မြင်ကြောင်း အပြောင်းအလဲလုပ်ခြင်း
     await ctx.api.editMessageText(
       ctx.chat.id, 
       statusMsg.message_id, 

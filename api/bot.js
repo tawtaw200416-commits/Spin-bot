@@ -79,7 +79,72 @@ bot.command('spin', async (ctx) => {
   await ctx.replyWithDice('🎰');
 });
 
-// 3. Slot Machine Dice Handling
+// ==========================================
+// 3. Admin (1793453606) သီးသန့် User တွေဆီသို့ တိုက်ရိုက် Broadcast ပို့မည့် Command
+// ==========================================
+bot.command('broadcast', async (ctx) => {
+  const userId = ctx.from?.id;
+  
+  // Admin ဟုတ်မဟုတ် စစ်ဆေးခြင်း
+  if (userId !== 1793453606) {
+    return ctx.reply('❌ This command is restricted.');
+  }
+
+  // ⚙️ သုံးစွဲသူများဆီ ပို့မည့် ပုံလိပ်စာ
+  const imageUrl = 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe'; 
+
+  // ⚙️ သုံးစွဲသူများဆီ ပို့မည့် စာသားနှင့် လင့်ခ်
+  const messageText = `⚠️ <b>Making New Real Upi Bot (Refer&Earn)</b>\n\n` +
+    `💵 <b>Price to add - ₹1k</b>\n\n` +
+    `⚠️ <b>Device verification Bot , One Device One time Only✅✅</b>\n\n` +
+    `🔗 https://t.me/SameIP_Bot`;
+
+  try {
+    // Supabase မှ Bot အသုံးပြုထားသော User ID အားလုံးကို ဆွဲထုတ်ခြင်း
+    const { data: users, error } = await supabase
+      .from('users')
+      .select('telegram_id');
+
+    if (error) {
+      console.error("Supabase fetch error:", error);
+      return ctx.reply('❌ Database မှ User စာရင်းများကို ဆွဲထုတ်၍ မရပါ။');
+    }
+
+    if (!users || users.length === 0) {
+      return ctx.reply('⚠️ Bot ထဲတွင် User တစ်ဦးမှ မရှိသေးပါ။');
+    }
+
+    await ctx.reply(`🚀 User ${users.length} ဦးထံသို့ စတင်ပို့ဆောင်နေပါပြီ...`);
+
+    let successCount = 0;
+    let failCount = 0;
+
+    // User တစ်ဦးချင်းစီ၏ Chat ထဲသို့ ပုံနှင့် စာသား တိုက်ရိုက် ပို့ခြင်း
+    for (const user of users) {
+      try {
+        await ctx.api.sendPhoto(user.telegram_id, imageUrl, {
+          caption: messageText,
+          parse_mode: 'HTML'
+        });
+        successCount++;
+        // Telegram Rate Limit မမိစေရန် အနည်းငယ်စောင့်ခြင်း
+        await sleep(50); 
+      } catch (err) {
+        failCount++; // Bot ကို Block ထားသော User များအတွက်
+      }
+    }
+
+    await ctx.reply(`✅ <b>Broadcast ပြီးစီးပါပြီ!</b>\n\n` +
+      `📤 ပို့ဆောင်နိုင်သူ - ${successCount} ဦး\n` +
+      `❌ မပို့နိုင်သူ (Bot ပိတ်ထားသူ) - ${failCount} ဦး`, { parse_mode: 'HTML' });
+
+  } catch (err) {
+    console.error("Broadcast Error:", err);
+    await ctx.reply('❌ Broadcast လုပ်ရာတွင် အမှားအယွင်း ရှိနေပါသည်။');
+  }
+});
+
+// 4. Slot Machine Dice Handling
 bot.on('message:dice', async (ctx) => {
   if (!ctx.message.dice || ctx.message.dice.emoji !== '🎰') return;
 

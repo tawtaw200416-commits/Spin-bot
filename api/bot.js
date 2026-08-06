@@ -14,18 +14,21 @@ const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 // Telegram Slot Machine ၏ 777 အပါအဝင် တရားဝင် ရလဒ်များအားလုံး တိကျစွာ တွက်ချက်သည့် Function
 const getSlotResult = (value) => {
+  // Telegram ၏ တရားဝင်တန်ဖိုး (1 မှ 64 ထိ)
   let v = value - 1;
   let r1 = v % 4;             
   let r2 = Math.floor(v / 4) % 4; 
   let r3 = Math.floor(v / 16) % 4;
 
+  // 777 / BAR / အသီးများအတွက် တရားဝင် သင်္ကေတနှင့် ဆုကြေးများ
   const symbols = {
-    0: { name: '🏷️ BAR BAR BAR', reward: 0.00200 },    
-    1: { name: '🍇 🍇 🍇',       reward: 0.00030 },   
-    2: { name: '🍋 🍋 🍋',       reward: 0.00050 },   
-    3: { name: '7️⃣ 7️⃣ 7️⃣ (Jackpot)', reward: 0.00300 } 
+    0: { name: '🏷️ BAR BAR BAR', reward: 0.00200 },    // BAR = 0.0020 GRAM
+    1: { name: '🍇 🍇 🍇',       reward: 0.00030 },   // Grape = 0.00030 GRAM
+    2: { name: '🍋 🍋 🍋',       reward: 0.00050 },   // Lemon = 0.00050 GRAM
+    3: { name: '7️⃣ 7️⃣ 7️⃣ (Jackpot)', reward: 0.00300 } // 777 = 0.00300 GRAM (သို့မဟုတ် လိုချင်သောတန်ဖိုး)
   };
 
+  // ၃ ခုတန်းမှသာ ဆုပေးမည်
   if (r1 === r2 && r2 === r3) {
     return symbols[r3] || null;
   }
@@ -77,29 +80,33 @@ bot.command('spin', async (ctx) => {
 });
 
 // ==========================================
-// သတ်မှတ်ထားသော User တစ်ယောက်တည်း (1793453606) အတွက် ပုံနှင့် Link ပို့မည့် Command
+// 4. Admin သီးသန့် ပုံ၊ စာသားနှင့် လင့်ခ်ပို့မည့် Command
 // ==========================================
 bot.command('sendpic', async (ctx) => {
   const userId = ctx.from?.id;
   
-  // ID တိုက်ဆိုင်မှု ရှိမရှိ စစ်ဆေးခြင်း
+  // Admin ID စစ်ဆေးခြင်း
   if (userId !== 1793453606) {
     return ctx.reply('❌ This command is restricted.');
   }
 
-  // ပို့ချင်သော ပုံ URL နှင့် Link များကို ဤနေရာတွင် ပြင်ဆင်နိုင်သည်
-  const imageUrl = 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe'; // ထည့်ချင်သည့် ပုံလိပ်စာ
+  // ⚙️ ဤနေရာတွင် လိုချင်သော ပုံလိပ်စာ (Image URL) ထည့်ပါ
+  const imageUrl = 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe'; 
+
+  // ⚙️ ဤနေရာတွင် ပုံနှင့်အတူတွဲပြမည့် စာသားနှင့် လင့်ခ်များကို ပြင်ဆင်နိုင်သည်
   const captionText = `⚠️ <b>Making New Real Upi Bot (Refer&Earn)</b>\n\n` +
-    `💵<b>Price to add - ₹1k</b>\n\n` +
-    `⚠️<b>Device verification Bot , One Device One time Only✅✅</b>\n\n` +
-    `[🔗 Website သို့ ဝင်ရန်](https://www.example.com)`;
+    `💵 <b>Price to add - ₹1k</b>\n\n` +
+    `⚠️ <b>Device verification Bot , One Device One time Only✅✅</b>\n\n` +
+    `🔗 <a href="https://www.example.com">Website သို့ ဝင်ရန်</a>`;
 
   await ctx.replyWithPhoto(imageUrl, {
     caption: captionText,
     parse_mode: 'HTML',
     reply_markup: {
       inline_keyboard: [
-        [{ text: '🔗 ဝင်ရောက်ရန် (Website)', url: 'https://www.example.com' }]
+        [
+          { text: '🔗 ဝင်ရောက်ရန် (Website)', url: 'https://www.example.com' } // ⚙️ ခလုတ်ပေါ်ရှိ Link
+        ]
       ]
     }
   });

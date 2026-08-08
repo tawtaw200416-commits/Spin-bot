@@ -177,11 +177,11 @@ bot.on('message:dice', async (ctx) => {
       replyText = `🎉 <b>Congratulations ${displayName}!</b>\n` +
         `<b>You got ${winCombination.name} and received ${reward} GRAM!</b>\n` +
         `<blockquote><b>Balance = <code>${newBalance.toFixed(6)} 💎</code></b></blockquote>\n` +
-        `<b>Mini 0.05 GRAM💰,📢@Rampage528</b>`;
+        `<b>Mini Withdraw = 0.05 GRAM💰,📢@Rampage528</b>`;
     } else {
       replyText = `❌ <b>Try again ${displayName}! Better luck next time.</b>\n` +
         `<blockquote><b>Balance = <code>${newBalance.toFixed(6)} 💎</code></b></blockquote>\n` +
-        `<b>Mini 0.05 GRAM💰,📢@Rampage528</b>`;
+        `<b>Mini Withdraw = 0.05 GRAM💰,📢@Rampage528</b>`;
     }
   } catch (error) {
     console.error("Supabase Error:", error);
@@ -197,7 +197,7 @@ bot.on('message:dice', async (ctx) => {
         `<b>Mini Withdraw = 0.05 GRAM💰,@Rampage528📢</b>`;
     } catch (e) {
       replyText = `❌ <b>Try again ${displayName}! Better luck next time.</b>\n` +
-        `<b>Mini Withdraw = 0.05 GRAM💰,@Rampage528📢</b>`;
+        `<b>Mini Withdraw = 0.05 GRAM💰,@REFERWORLD1📢</b>`;
     }
   }
 

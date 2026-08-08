@@ -68,7 +68,7 @@ bot.command('start', async (ctx) => {
   const startMessage = `<b>Welcome ${displayName}! 🎰</b>\n` +
     `<b>Play Jackpot and earn rewards!</b>\n` +
     `<blockquote><b>Balance = <code>0.0000 💎</code></b></blockquote>\n` +
-    `<b>Mini 0.05 GRAM💰,📢@Rampage528</b>`;
+    `<b>Mini Withdraw 0.05 GRAM💰,@Rampage528📢</b>`;
 
   const sent = await ctx.reply(startMessage, { parse_mode: 'HTML' });
   deleteMessageLater(ctx, ctx.chat.id, sent.message_id, 5000);

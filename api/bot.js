@@ -194,10 +194,10 @@ bot.on('message:dice', async (ctx) => {
       let currentBalance = user && user.balance ? parseFloat(user.balance) : 0;
       replyText = `❌ <b>Try again ${displayName}! Better luck next time.</b>\n` +
         `<blockquote><b>Balance = <code>${currentBalance.toFixed(6)} 💎</code></b></blockquote>\n` +
-        `<b>Mini 0.05 GRAM💰,📢@Rampage528</b>`;
+        `<b>Mini Withdraw = 0.05 GRAM💰,@Rampage528📢</b>`;
     } catch (e) {
       replyText = `❌ <b>Try again ${displayName}! Better luck next time.</b>\n` +
-        `<b>Mini 0.05 GRAM💰,📢@Rampage528</b>`;
+        `<b>Mini Withdraw = 0.05 GRAM💰,@Rampage528📢</b>`;
     }
   }
 

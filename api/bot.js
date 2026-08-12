@@ -68,7 +68,7 @@ bot.command('start', async (ctx) => {
   const startMessage = `<b>Welcome ${displayName}! 🎰</b>\n` +
     `<b>Play Jackpot and earn rewards!</b>\n` +
     `<blockquote><b>Balance = <code>0.0000 💎</code></b></blockquote>\n` +
-    `<b>Mini Withdraw 0.05 GRAM💰,@Rampage528📢</b>`;
+    `<b>Mini Withdraw 0.1 GRAM💰,@Rampage528📢</b>`;
 
   const sent = await ctx.reply(startMessage, { parse_mode: 'HTML' });
   deleteMessageLater(ctx, ctx.chat.id, sent.message_id, 5000);
@@ -177,11 +177,11 @@ bot.on('message:dice', async (ctx) => {
       replyText = `🎉 <b>Congratulations ${displayName}!</b>\n` +
         `<b>You got ${winCombination.name} and received ${reward} GRAM!</b>\n` +
         `<blockquote><b>Balance = <code>${newBalance.toFixed(6)} 💎</code></b></blockquote>\n` +
-        `<b>Mini Withdraw = 0.05 GRAM💰,📢@Rampage528</b>`;
+        `<b>Mini Withdraw = 0.1 GRAM💰,📢@Rampage528</b>`;
     } else {
       replyText = `❌ <b>Try again ${displayName}! Better luck next time.</b>\n` +
         `<blockquote><b>Balance = <code>${newBalance.toFixed(6)} 💎</code></b></blockquote>\n` +
-        `<b>Mini Withdraw = 0.05 GRAM💰,📢@Rampage528</b>`;
+        `<b>Mini Withdraw = 0.1 GRAM💰,📢@Rampage528</b>`;
     }
   } catch (error) {
     console.error("Supabase Error:", error);
@@ -194,10 +194,10 @@ bot.on('message:dice', async (ctx) => {
       let currentBalance = user && user.balance ? parseFloat(user.balance) : 0;
       replyText = `❌ <b>Try again ${displayName}! Better luck next time.</b>\n` +
         `<blockquote><b>Balance = <code>${currentBalance.toFixed(6)} 💎</code></b></blockquote>\n` +
-        `<b>Mini Withdraw = 0.05 GRAM💰,@Rampage528📢</b>`;
+        `<b>Mini Withdraw = 0.1 GRAM💰,@Rampage528📢</b>`;
     } catch (e) {
       replyText = `❌ <b>Try again ${displayName}! Better luck next time.</b>\n` +
-        `<b>Mini Withdraw = 0.05 GRAM💰,@REFERWORLD1📢</b>`;
+        `<b>Mini Withdraw = 0.1 GRAM💰,@REFERWORLD1📢</b>`;
     }
   }
 

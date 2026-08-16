@@ -22,10 +22,10 @@ const getSlotResult = (value) => {
 
   // 777 / BAR / အသီးများအတွက် တရားဝင် သင်္ကေတနှင့် ဆုကြေးများ
   const symbols = {
-    0: { name: '🏷️ BAR BAR BAR', reward: 0.00250 },    // BAR = 0.00250 GRAM
-    1: { name: '🍇 🍇 🍇',       reward: 0.00050 },   // Grape = 0.00050 GRAM
-    2: { name: '🍋 🍋 🍋',       reward: 0.00100 },   // Lemon = 0.00100 GRAM
-    3: { name: '7️⃣ 7️⃣ 7️⃣ (Jackpot)', reward: 0.00350 } // 777 = 0.00350 GRAM (သို့မဟုတ် လိုချင်သောတန်ဖိုး)
+    0: { name: '🏷️ BAR BAR BAR', reward: 0.0008 },    // BAR = 0.0008 GRAM
+    1: { name: '🍇 🍇 🍇',       reward: 0.0005 },   // Grape = 0.00050 GRAM
+    2: { name: '🍋 🍋 🍋',       reward: 0.0003 },   // Lemon = 0.00100 GRAM
+    3: { name: '7️⃣ 7️⃣ 7️⃣ (Jackpot)', reward: 0.00100 } // 777 = 0.0010 GRAM (သို့မဟုတ် လိုချင်သောတန်ဖိုး)
   };
 
   // ၃ ခုတန်းမှသာ ဆုပေးမည်
@@ -68,7 +68,7 @@ bot.command('start', async (ctx) => {
   const startMessage = `<b>Welcome ${displayName}! 🎰</b>\n` +
     `<b>Play Jackpot and earn rewards!</b>\n` +
     `<blockquote><b>Balance = <code>0.0000 💎</code></b></blockquote>\n` +
-    `<b>Mini Withdraw 0.1 GRAM💰,@Rampage528📢</b>`;
+    `<b>Mini Withdraw 0.05 GRAM💰,@Rampage528📢</b>`;
 
   const sent = await ctx.reply(startMessage, { parse_mode: 'HTML' });
   deleteMessageLater(ctx, ctx.chat.id, sent.message_id, 5000);
@@ -177,11 +177,11 @@ bot.on('message:dice', async (ctx) => {
       replyText = `🎉 <b>Congratulations ${displayName}!</b>\n` +
         `<b>You got ${winCombination.name} and received ${reward} GRAM!</b>\n` +
         `<blockquote><b>Balance = <code>${newBalance.toFixed(6)} 💎</code></b></blockquote>\n` +
-        `<b>Mini Withdraw = 0.1 GRAM💰,📢@Rampage528</b>`;
+        `<b>Mini Withdraw = 0.05 GRAM💰,📢@Rampage528</b>`;
     } else {
       replyText = `❌ <b>Try again ${displayName}! Better luck next time.</b>\n` +
         `<blockquote><b>Balance = <code>${newBalance.toFixed(6)} 💎</code></b></blockquote>\n` +
-        `<b>Mini Withdraw = 0.1 GRAM💰,📢@Rampage528</b>`;
+        `<b>Mini Withdraw = 0.05 GRAM💰,📢@Rampage528</b>`;
     }
   } catch (error) {
     console.error("Supabase Error:", error);
@@ -194,10 +194,10 @@ bot.on('message:dice', async (ctx) => {
       let currentBalance = user && user.balance ? parseFloat(user.balance) : 0;
       replyText = `❌ <b>Try again ${displayName}! Better luck next time.</b>\n` +
         `<blockquote><b>Balance = <code>${currentBalance.toFixed(6)} 💎</code></b></blockquote>\n` +
-        `<b>Mini Withdraw = 0.1 GRAM💰,@Rampage528📢</b>`;
+        `<b>Mini Withdraw = 0.05 GRAM💰,@Rampage528📢</b>`;
     } catch (e) {
       replyText = `❌ <b>Try again ${displayName}! Better luck next time.</b>\n` +
-        `<b>Mini Withdraw = 0.1 GRAM💰,@REFERWORLD1📢</b>`;
+        `<b>Mini Withdraw = 0.05 GRAM💰,@REFERWORLD1📢</b>`;
     }
   }
 

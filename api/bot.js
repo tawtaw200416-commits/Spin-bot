@@ -143,8 +143,37 @@ bot.on('message:dice', async (ctx) => {
   const isComment = ctx.message.reply_to_message || ctx.message.is_topic_message;
   if (!isComment) return;
 
-  const diceValue = ctx.message.dice.value;
   const userId = ctx.from.id;
+
+  // ==========================================
+  // Reaction စစ်ဆေးသည့် Logic (Channel Post ကို Reaction ပေးထားခြင်း ရှိ/မရှိ)
+  // ==========================================
+  try {
+    const targetMessageId = ctx.message.reply_to_message?.message_id;
+
+    if (targetMessageId) {
+      const userReactions = await ctx.api.getMessageReactions(ctx.chat.id, targetMessageId, {
+        user_id: userId
+      });
+
+      if (!userReactions || userReactions.length === 0) {
+        const warningMsg = await ctx.reply(
+          `⚠️ <b>@${ctx.from.username || ctx.from.first_name}</b>, Post ကို Reaction (အသဲ/Like) ပေးပြီးမှ Spin လှည့်ပါ!`,
+          { 
+            parse_mode: 'HTML',
+            reply_to_message_id: ctx.message.message_id 
+          }
+        );
+        
+        deleteMessageLater(ctx, ctx.chat.id, warningMsg.message_id, 5000);
+        return; // Reaction မပေးထားပါက Spin လုပ်ငန်းစဉ်ကို ရပ်ဆိုင်းမည်
+      }
+    }
+  } catch (reactErr) {
+    console.error("Reaction check error:", reactErr);
+  }
+
+  const diceValue = ctx.message.dice.value;
   
   const rawUsername = ctx.from.username || ctx.from.first_name || `ID: ${userId}`;
   const displayName = ctx.from.username ? `@${ctx.from.username}` : rawUsername;

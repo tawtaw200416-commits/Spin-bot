@@ -12,20 +12,23 @@ const bot = new Bot(BOT_TOKEN);
 // Sleep Helper Function
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-// Slot Machine ရလဒ် တွက်ချက်သည့် Function
+// Telegram Slot Machine ၏ 777 အပါအဝင် တရားဝင် ရလဒ်များအားလုံး တိကျစွာ တွက်ချက်သည့် Function
 const getSlotResult = (value) => {
+  // Telegram ၏ တရားဝင်တန်ဖိုး (1 မှ 64 ထိ)
   let v = value - 1;
   let r1 = v % 4;             
   let r2 = Math.floor(v / 4) % 4; 
   let r3 = Math.floor(v / 16) % 4;
 
+  // 777 / BAR / အသီးများအတွက် တရားဝင် သင်္ကေတနှင့် ဆုကြေးများ
   const symbols = {
-    0: { name: '🏷️ BAR BAR BAR', reward: 0.00080 },
-    1: { name: '🍇 🍇 🍇',       reward: 0.00050 },
-    2: { name: '🍋 🍋 🍋',       reward: 0.00030 },
-    3: { name: '7️⃣ 7️⃣ 7️⃣ (Jackpot)', reward: 0.0010 }
+    0: { name: '🏷️ BAR BAR BAR', reward: 0.00080 },    // BAR = 0.00080 GRAM
+    1: { name: '🍇 🍇 🍇',       reward: 0.00050 },   // Grape = 0.00050 GRAM
+    2: { name: '🍋 🍋 🍋',       reward: 0.00030 },   // Lemon = 0.00030 GRAM
+    3: { name: '7️⃣ 7️⃣ 7️⃣ (Jackpot)', reward: 0.0010 } // 777 = 0.0010 GRAM
   };
 
+  // ၃ ခုတန်းမှသာ ဆုပေးမည်
   if (r1 === r2 && r2 === r3) {
     return symbols[r3] || null;
   }
@@ -38,25 +41,25 @@ bot.catch((err) => {
   console.error('Error in bot:', err);
 });
 
-// Delay ဖြင့် Message ဖျက်ပေးမည့် Helper Function (Vercel Background Context ပါဝင်သည်)
+// Delay ဖြင့် Background မှာ Message ဖျက်ပေးမည့် Helper Function
 const deleteMessageLater = (ctx, chatId, messageId, delay = 5000) => {
-  const task = async () => {
+  const promise = (async () => {
     await sleep(delay);
     try {
       await ctx.api.deleteMessage(chatId, messageId);
     } catch (e) {
       console.error('Delete message failed:', e);
     }
-  };
+  })();
 
   if (ctx.waitUntil) {
-    ctx.waitUntil(task());
-  } else {
-    task();
+    ctx.waitUntil(promise);
+  } else if (ctx.state && ctx.state.waitUntil) {
+    ctx.state.waitUntil(promise);
   }
 };
 
-// Reaction Event Listener (Channel / Group Post အား Reaction ပေးပါက DB တွင် မှတ်တမ်းတင်မည်)
+// Reaction Event Listener (User များ Reaction ပေးပါက Supabase DB တွင် မှတ်တမ်းတင်မည်)
 bot.on('message_reaction', async (ctx) => {
   try {
     const reaction = ctx.messageReaction;
@@ -104,7 +107,9 @@ bot.command('spin', async (ctx) => {
   await ctx.replyWithDice('🎰');
 });
 
-// 3. Admin Broadcast Command
+// ==========================================
+// 3. Admin (1793453606) သီးသန့် Broadcast ပို့မည့် Command
+// ==========================================
 bot.command('broadcast', async (ctx) => {
   const userId = ctx.from?.id;
   
@@ -172,7 +177,7 @@ bot.on('message:dice', async (ctx) => {
   const replyMsg = ctx.message.reply_to_message;
   const threadId = ctx.message.message_thread_id;
 
-  // မူရင်း Channel Message ID နှင့် Link အတွက် Parameter များ စုဆောင်းခြင်း
+  // မူရင်း Post ရှာဖွေခြင်း
   let possibleMsgIds = [];
   let channelUsername = null;
   let channelChatId = null;
@@ -196,9 +201,7 @@ bot.on('message:dice', async (ctx) => {
     }
   }
 
-  // ==========================================
-  // DB တွင် Reaction စစ်ဆေးခြင်း
-  // ==========================================
+  // Reaction ပေးထားခြင်း ရှိ/မရှိ စစ်ဆေးခြင်း
   let hasReacted = false;
   if (possibleMsgIds.length > 0) {
     try {
@@ -216,7 +219,7 @@ bot.on('message:dice', async (ctx) => {
     }
   }
 
-  // Reaction မပေးထားသူများအတွက် - Spin ကိုဖျက်ပြီး သတိပေးစာပို့မည်
+  // Reaction မပေးထားပါက Spin ကို တန်းဖျက်ပြီး သတိပေးစာ ပို့မည်
   if (!hasReacted) {
     try {
       await ctx.api.deleteMessage(ctx.chat.id, ctx.message.message_id);
@@ -257,13 +260,12 @@ bot.on('message:dice', async (ctx) => {
       warningOptions
     );
 
+    // သတိပေးစာကို ၅ စက္ကန့်အကြာတွင် ဖျက်မည်
     deleteMessageLater(ctx, ctx.chat.id, warningMsg.message_id, 5000);
     return;
   }
 
-  // ==========================================
-  // Reaction ပေးထားပါက - Spin Message ကို မဖျက်ဘဲ ပုံမှန်အတိုင်း လှည့်ခွင့်ပေးမည်
-  // ==========================================
+  // Reaction ပေးထားပါက မူရင်းအတိုင်း Spin မပျက်ဘဲ Balance တွက်ချက်ပေးမည်
   const diceValue = ctx.message.dice.value;
   let replyText = '';
   const winCombination = getSlotResult(diceValue);
@@ -317,7 +319,6 @@ bot.on('message:dice', async (ctx) => {
     }
   }
 
-  // Reply ပို့မည့် Option များ ပြင်ဆင်ခြင်း
   const replyOptions = { 
     parse_mode: 'HTML',
     reply_to_message_id: ctx.message.message_id
@@ -327,6 +328,7 @@ bot.on('message:dice', async (ctx) => {
     replyOptions.message_thread_id = threadId;
   }
 
+  // Reaction ပေးထားသူများအတွက် Dice ကို ဖျက်မပစ်ဘဲ တိုက်ရိုက် Reply ပြန်ပေးပါမည်
   await ctx.reply(replyText, replyOptions);
 });
 

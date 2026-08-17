@@ -14,21 +14,18 @@ const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 // Telegram Slot Machine ၏ 777 အပါအဝင် တရားဝင် ရလဒ်များအားလုံး တိကျစွာ တွက်ချက်သည့် Function
 const getSlotResult = (value) => {
-  // Telegram ၏ တရားဝင်တန်ဖိုး (1 မှ 64 ထိ)
   let v = value - 1;
   let r1 = v % 4;             
   let r2 = Math.floor(v / 4) % 4; 
   let r3 = Math.floor(v / 16) % 4;
 
-  // 777 / BAR / အသီးများအတွက် တရားဝင် သင်္ကေတနှင့် ဆုကြေးများ
   const symbols = {
-    0: { name: '🏷️ BAR BAR BAR', reward: 0.00080 },    // BAR = 0.00080 GRAM
-    1: { name: '🍇 🍇 🍇',       reward: 0.00050 },   // Grape = 0.00050 GRAM
-    2: { name: '🍋 🍋 🍋',       reward: 0.00030 },   // Lemon = 0.00030 GRAM
-    3: { name: '7️⃣ 7️⃣ 7️⃣ (Jackpot)', reward: 0.0010 } // 777 = 0.0010 GRAM (သို့မဟုတ် လိုချင်သောတန်ဖိုး)
+    0: { name: '🏷️ BAR BAR BAR', reward: 0.00080 },
+    1: { name: '🍇 🍇 🍇',       reward: 0.00050 },
+    2: { name: '🍋 🍋 🍋',       reward: 0.00030 },
+    3: { name: '7️⃣ 7️⃣ 7️⃣ (Jackpot)', reward: 0.0010 }
   };
 
-  // ၃ ခုတန်းမှသာ ဆုပေးမည်
   if (r1 === r2 && r2 === r3) {
     return symbols[r3] || null;
   }
@@ -59,6 +56,36 @@ const deleteMessageLater = (ctx, chatId, messageId, delay = 5000) => {
   }
 };
 
+// ==========================================
+// Reaction Event Listener (အသဲပေးတာကို စောင့်ကြည့်ပြီး Database မှာ မှတ်မည်)
+// ==========================================
+bot.on('message_reaction', async (ctx) => {
+  try {
+    const reaction = ctx.messageReaction;
+    if (!reaction) return;
+
+    const messageId = reaction.message_id;
+    const userId = reaction.user?.id;
+    const newReactions = reaction.new_reaction;
+
+    if (!userId) return;
+
+    if (newReactions && newReactions.length > 0) {
+      await supabase.from('reactions').upsert({
+        message_id: messageId,
+        telegram_id: userId
+      }, { onConflict: 'message_id,telegram_id' });
+    } else {
+      await supabase.from('reactions')
+        .delete()
+        .eq('message_id', messageId)
+        .eq('telegram_id', userId);
+    }
+  } catch (err) {
+    console.error("Error saving reaction:", err);
+  }
+});
+
 // 1. /start Command
 bot.command('start', async (ctx) => {
   const userId = ctx.from?.id;
@@ -79,9 +106,7 @@ bot.command('spin', async (ctx) => {
   await ctx.replyWithDice('🎰');
 });
 
-// ==========================================
-// 3. Admin (1793453606) သီးသန့် Broadcast ပို့မည့် Command
-// ==========================================
+// 3. Admin Broadcast Command
 bot.command('broadcast', async (ctx) => {
   const userId = ctx.from?.id;
   
@@ -89,7 +114,6 @@ bot.command('broadcast', async (ctx) => {
     return ctx.reply('❌ This command is restricted.');
   }
 
-  // Admin ရိုက်လိုက်သော စာသားကို ယူခြင်း (ဥပမာ - /broadcast စာသား)
   const customMessage = ctx.match;
 
   if (!customMessage) {
@@ -148,55 +172,61 @@ bot.on('message:dice', async (ctx) => {
   const displayName = ctx.from.username ? `@${ctx.from.username}` : rawUsername;
 
   // ==========================================
-  // Reaction (အသဲ/Like) စစ်ဆေးပေးသည့် အစိတ်အပိုင်း
+  // DB ဖြင့် Reaction မဖြစ်မနေ ပေးထားခြင်း ရှိ/မရှိ စစ်ဆေးသည့် Logic
   // ==========================================
   try {
     const replyMessage = ctx.message.reply_to_message;
 
     if (replyMessage) {
-      // 1. Target Message ၏ ID ယူခြင်း
       const targetMessageId = replyMessage.message_id;
 
-      // 2. Reaction များကို တိုက်ရိုက် စစ်ဆေးခြင်း
-      const userReactions = await ctx.api.getMessageReactions(ctx.chat.id, targetMessageId, {
-        user_id: userId
-      });
+      // Supabase ရှိ reactions Table ထဲတွင် စစ်ဆေးမည်
+      const { data: reactionData } = await supabase
+        .from('reactions')
+        .select('id')
+        .eq('message_id', targetMessageId)
+        .eq('telegram_id', userId)
+        .maybeSingle();
 
-      // 3. User ကိုယ်တိုင် Reaction မပေးထားပါက Spin လှည့်ခွင့် မပြုပါ
-      if (!userReactions || userReactions.length === 0) {
-        
-        // Channel Post Link တည်ဆောက်ခြင်း
+      if (!reactionData) {
+        // ၁။ လှည့်လိုက်သည့် Spin Message (Dice) ကို တန်းဖျက်မည်
+        try {
+          await ctx.api.deleteMessage(ctx.chat.id, ctx.message.message_id);
+        } catch (delErr) {
+          console.error("Spin message delete error:", delErr);
+        }
+
+        // ၂။ Channel Post Link တည်ဆောက်ခြင်း
         let postLink = '';
         if (ctx.chat.username) {
           postLink = `https://t.me/${ctx.chat.username}/${targetMessageId}`;
         } else {
-          // Private Group/Channel များအတွက် Clean ID
           const cleanChatId = ctx.chat.id.toString().replace('-100', '');
           postLink = `https://t.me/c/${cleanChatId}/${targetMessageId}`;
         }
 
+        // ၃။ သတိပေးစာ ပို့မည်
         const warningMsg = await ctx.reply(
           `🚫 <b>Access Denied!</b>\n\n` +
           `Hey ${displayName}, you must react (❤️/👍) to the original post before you can spin!\n\n` +
           `👉 <a href="${postLink}">Click here to React to the Post</a>`,
           { 
             parse_mode: 'HTML',
-            reply_to_message_id: ctx.message.message_id,
             disable_web_page_preview: true
           }
         );
         
-        // သတိပေးစာကို 5 စက္ကန့်အကြာတွင် ဖျက်ပါမည်
+        // ၄။ သတိပေးစာကို 5 စက္ကန့်ပြပြီးမှ ဖျက်မည်
         deleteMessageLater(ctx, ctx.chat.id, warningMsg.message_id, 5000);
-        return; // Spin ရလဒ် ထွက်မလာစေရန် ဤနေရာတွင် ရပ်ဆိုင်းပါသည်
+        return; // Spin ရလဒ် ပို့ပေးခြင်းမပြုဘဲ ဤနေရာတွင် ရပ်ဆိုင်းမည်
       }
     }
   } catch (reactErr) {
-    console.error("Reaction Verification Error:", reactErr);
+    console.error("Reaction Database Check Error:", reactErr);
   }
 
   // ==========================================
-  // Spin Logic (ယခင်မူရင်းအတိုင်း)
+  // Spin Logic
   // ==========================================
   const diceValue = ctx.message.dice.value;
   let replyText = '';
@@ -261,6 +291,8 @@ bot.on('message:dice', async (ctx) => {
   }
 
   const sentMsg = await ctx.reply(replyText, replyOptions);
+  
+  // အသဲပေးထားသူ လှည့်သော Spin ရလဒ်ကို 5s အကြာတွင် ဖျက်မည်
   deleteMessageLater(ctx, ctx.chat.id, sentMsg.message_id, 5000);
 });
 

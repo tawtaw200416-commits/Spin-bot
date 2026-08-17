@@ -1,4 +1,4 @@
-​const { Bot, webhookCallback } = require('grammy');
+const { Bot, webhookCallback } = require('grammy');
 const { createClient } = require('@supabase/supabase-js');
 
 // Supabase Configuration
@@ -12,7 +12,7 @@ const bot = new Bot(BOT_TOKEN);
 // Sleep Helper Function
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-// Slot Machine ရလဒ် တွက်ချက်သည့် Function
+// Slot Machine ရလဒ်များ တွက်ချက်ခြင်း
 const getSlotResult = (value) => {
   let v = value - 1;
   let r1 = v % 4;             
@@ -56,7 +56,7 @@ const deleteMessageLater = (ctx, chatId, messageId, delay = 5000) => {
   }
 };
 
-// Direct Await Message Deletion
+// Direct Await Message Deletion (Serverless Timeout ပြဿနာ မရှိစေရန်)
 const deleteMessageDirect = async (chatId, messageId, delay = 5000) => {
   await sleep(delay);
   try {
@@ -67,7 +67,7 @@ const deleteMessageDirect = async (chatId, messageId, delay = 5000) => {
 };
 
 // ==========================================
-// Reaction Event: Reaction ပေးရင် DB သို့ထည့်၊ ဖြုတ်လိုက်ရင် DB ထဲက ချက်ချင်းဖျက်မည်
+// Reaction Event Handling (ပေးရင် DB ထည့်၊ ဖြုတ်ရင် DB မှ တိကျစွာ ဖျက်မည်)
 // ==========================================
 bot.on('message_reaction', async (ctx) => {
   try {
@@ -82,7 +82,7 @@ bot.on('message_reaction', async (ctx) => {
 
     const newReactions = reaction.new_reaction || [];
 
-    // Reaction အသစ် ပေးလိုက်ပါက Database ထဲ သိမ်းမည်
+    // Reaction အသစ် ပေးလိုက်ပါက Database ထဲ အဆင့်မြှင့်/ထည့်မည်
     if (newReactions.length > 0) {
       await supabase.from('reactions').upsert({
         user_id: userId,
@@ -90,7 +90,7 @@ bot.on('message_reaction', async (ctx) => {
         message_id: messageId
       }, { onConflict: 'user_id,chat_id,message_id' });
     } 
-    // Reaction ပြန်ဖြုတ်လိုက်ပါက Database မှ တိကျစွာ ဖျက်မည်
+    // Reaction ပြန်ဖြုတ်လိုက်ပါက Database မှ ချက်ချင်း ဖျက်မည်
     else {
       await supabase.from('reactions')
         .delete()
@@ -194,7 +194,7 @@ bot.on('message:dice', async (ctx) => {
   const replyMsg = ctx.message.reply_to_message;
 
   // ----------------------------------------------------
-  // Reaction စစ်ဆေးသည့် စနစ်
+  // တိကျသော Post Reaction စစ်ဆေးသည့် စနစ်
   // ----------------------------------------------------
   let hasReacted = false;
 
@@ -208,6 +208,7 @@ bot.on('message:dice', async (ctx) => {
       }
     }
 
+    // လက်ရှိ Spin လှည့်နေသော Post သို့မဟုတ် Thread မှာ Reaction ပေးထားခြင်း ရှိမရှိသာ တိကျစွာ စစ်ဆေးခြင်း
     if (candidateIds.length > 0) {
       const { data: recData } = await supabase
         .from('reactions')
@@ -227,14 +228,14 @@ bot.on('message:dice', async (ctx) => {
   // A. Reaction မပေးထားလျှင် (သို့မဟုတ်) ပြန်ဖြုတ်ထားလျှင်
   // ----------------------------------------------------
   if (!hasReacted) {
-    // 1. User လှည့်လိုက်သော Spin (Dice) ကို ချက်ချင်း ဖျက်မည်
+    // ၁။ User လှည့်လိုက်သော Spin (Dice) ကို ချက်ချင်း ဖျက်ဆီးမည်
     try {
       await ctx.api.deleteMessage(ctx.chat.id, ctx.message.message_id);
     } catch (e) {
       console.error("Error deleting dice:", e.message);
     }
 
-    // 2. Channel/Group Post Direct Link ပြင်ဆင်ခြင်း
+    // ၂။ Post Direct Link ပြင်ဆင်ခြင်း
     const finalPostId = threadId || (replyMsg ? replyMsg.message_id : ctx.message.message_id);
     let postLink = '';
     
@@ -246,7 +247,7 @@ bot.on('message:dice', async (ctx) => {
       postLink = `https://t.me/c/${cleanChatId}/${finalPostId}`;
     }
 
-    // 3. သတိပေးစာ ပို့ပေးမည်
+    // ၃။ Reaction ပေးရန် သတိပေးစာ ထုတ်ပြန်ခြင်း
     const warningOptions = { 
       parse_mode: 'HTML',
       disable_web_page_preview: true
@@ -266,13 +267,13 @@ bot.on('message:dice', async (ctx) => {
       warningOptions
     );
 
-    // 4. Warning စာကို ၅ စက္ကန့်အကြာတွင် ဖျက်မည်
+    // ၄။ သတိပေးစာကို ၅ စက္ကန့်အကြာတွင် ဖျက်မည်
     await deleteMessageDirect(ctx.chat.id, warningMsg.message_id, 5000);
     return;
   }
 
   // ----------------------------------------------------
-  // B. Reaction ပေးထားပါက Normal Spin (ဆုကြေး ပေးမည်)
+  // B. Reaction ပေးထားပါက မပျက်ဘဲ ပုံမှန် Spin အလုပ်လုပ်မည်
   // ----------------------------------------------------
   let replyText = '';
   const winCombination = getSlotResult(diceValue);
@@ -340,7 +341,7 @@ bot.on('message:dice', async (ctx) => {
   deleteMessageLater(ctx, ctx.chat.id, sentMsg.message_id, 5000);
 });
 
-// Vercel Serverless Native Handler
+// Vercel Serverless Webhook Handler
 const handleWebhook = webhookCallback(bot, 'std/http');
 
 module.exports = async (req, res, context) => {
@@ -367,7 +368,6 @@ module.exports = async (req, res, context) => {
     }
   }
 
-  // Webhook Register ပြုလုပ်ခြင်း
   if (req.method === 'GET') {
     try {
       const host = req.headers.host || 'spin-bot-ten.vercel.app';

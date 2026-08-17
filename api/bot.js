@@ -56,7 +56,7 @@ const deleteMessageLater = (ctx, chatId, messageId, delay = 5000) => {
   }
 };
 
-// Reaction Event Listener (Channel / Group Post အား Reaction ပေးပါက မှတ်တမ်းတင်မည်)
+// Reaction Event Listener (Channel Post ကို Reaction ပေးပါက DB တွင် မှတ်မည်)
 bot.on('message_reaction', async (ctx) => {
   try {
     const reaction = ctx.messageReaction;
@@ -169,52 +169,73 @@ bot.on('message:dice', async (ctx) => {
   const rawUsername = ctx.from.username || ctx.from.first_name || `ID: ${userId}`;
   const displayName = ctx.from.username ? `@${ctx.from.username}` : rawUsername;
 
-  // အောက်ပါအတိုင်း မူရင်း Channel Message / Post ID ကို တိကျစွာ ရှာဖွေပါမည်
-  let channelPostId = null;
-
-  if (ctx.message.reply_to_message) {
-    // 1. မူရင်း Post မှ တိုက်ရိုက် Auto-Forward လာသော Message ဖြစ်ပါက
-    if (ctx.message.reply_to_message.forward_from_message_id) {
-      channelPostId = ctx.message.reply_to_message.forward_from_message_id;
-    } else {
-      channelPostId = ctx.message.reply_to_message.message_id;
-    }
-  }
-
-  // Topic ID (Comment Thread ID) ကို ရယူခြင်း
+  // Comment Thread ID ရယူခြင်း
   const threadId = ctx.message.message_thread_id;
 
   // ==========================================
-  // Reaction (အသဲ) ပေးထားခြင်း ရှိ/မရှိ စစ်ဆေးခြင်း
+  // မူရင်း Channel Message ID နှင့် Channel Info ရှာဖွေခြင်း
   // ==========================================
-  if (channelPostId) {
+  let targetChannelMsgId = null;
+  let channelUsername = null;
+  let channelChatId = null;
+
+  const replyMsg = ctx.message.reply_to_message;
+
+  if (replyMsg) {
+    // 1. Channel Post မှ Group ထို့ Auto-Forward လာသော Message ဖြစ်ပါက
+    if (replyMsg.forward_from_chat && replyMsg.forward_from_message_id) {
+      targetChannelMsgId = replyMsg.forward_from_message_id;
+      channelUsername = replyMsg.forward_from_chat.username;
+      channelChatId = replyMsg.forward_from_chat.id;
+    } 
+    // 2. တိုက်ရိုက် မဟုတ်ဘဲ အခြား မန့်တစ်ခုကို Reply ပြန်ထားပါက
+    else if (replyMsg.external_reply && replyMsg.external_reply.message_id) {
+      targetChannelMsgId = replyMsg.external_reply.message_id;
+      if (replyMsg.external_reply.chat) {
+        channelUsername = replyMsg.external_reply.chat.username;
+        channelChatId = replyMsg.external_reply.chat.id;
+      }
+    } else {
+      targetChannelMsgId = replyMsg.message_id;
+    }
+  }
+
+  // ==========================================
+  // DB တွင် Reaction စစ်ဆေးခြင်း
+  // ==========================================
+  if (targetChannelMsgId) {
     try {
       const { data: reactionData } = await supabase
         .from('reactions')
         .select('id')
-        .eq('message_id', channelPostId)
+        .eq('message_id', targetChannelMsgId)
         .eq('telegram_id', userId)
         .maybeSingle();
 
-      // အကယ်၍ Reaction မပေးထားပါက
+      // Reaction မပေးထားပါက -
       if (!reactionData) {
-        // ၁။ လှည့်လိုက်သော Spin (Dice) Message ကို ချက်ချင်း ဖျက်မည်
+        // ၁။ Spin Message (Dice) ကို တန်းဖျက်မည်
         try {
           await ctx.api.deleteMessage(ctx.chat.id, ctx.message.message_id);
         } catch (delErr) {
-          console.error("Failed to delete dice:", delErr);
+          console.error("Spin delete error:", delErr);
         }
 
-        // ၂။ Post Link တည်ဆောက်ခြင်း
+        // ၂။ Channel Post Link အမှန် ပြင်ဆင်ဆောက်လုပ်ခြင်း
         let postLink = '';
-        if (ctx.chat.username) {
-          postLink = `https://t.me/${ctx.chat.username}/${channelPostId}`;
+        if (channelUsername) {
+          postLink = `https://t.me/${channelUsername}/${targetChannelMsgId}`;
+        } else if (channelChatId) {
+          const cleanChatId = channelChatId.toString().replace('-100', '');
+          postLink = `https://t.me/c/${cleanChatId}/${targetChannelMsgId}`;
+        } else if (ctx.chat.username) {
+          postLink = `https://t.me/${ctx.chat.username}/${targetChannelMsgId}`;
         } else {
           const cleanChatId = ctx.chat.id.toString().replace('-100', '');
-          postLink = `https://t.me/c/${cleanChatId}/${channelPostId}`;
+          postLink = `https://t.me/c/${cleanChatId}/${targetChannelMsgId}`;
         }
 
-        // ၃။ သတိပေးစာ ပို့မည့် Option (ယခု မန့်ထားသော Comment Thread ထဲသို့သာ ပို့မည်)
+        // ၃။ သတိပေးစာကို Comment Thread (Topic) ထဲသို့သာ ပို့မည်
         const warningOptions = { 
           parse_mode: 'HTML',
           disable_web_page_preview: true
@@ -222,8 +243,6 @@ bot.on('message:dice', async (ctx) => {
 
         if (threadId) {
           warningOptions.message_thread_id = threadId;
-        } else if (ctx.message.reply_to_message) {
-          warningOptions.reply_to_message_id = ctx.message.reply_to_message.message_id;
         }
 
         const warningMsg = await ctx.reply(
@@ -233,9 +252,9 @@ bot.on('message:dice', async (ctx) => {
           warningOptions
         );
         
-        // ၄။ သတိပေးစာကို ၅ စက္ကန့်အကြာတွင် ဖျက်မည်
+        // ၄။ သတိပေးစာကို ၅ စက္ကန့်ပြပြီး ဖျက်မည်
         deleteMessageLater(ctx, ctx.chat.id, warningMsg.message_id, 5000);
-        return; // Spin ရလဒ် ပို့ပေးခြင်းမပြုဘဲ ရပ်ဆိုင်းမည်
+        return; // Spin မလှည့်စေရန် ရပ်ဆိုင်းမည်
       }
     } catch (reactErr) {
       console.error("Reaction Database Check Error:", reactErr);
@@ -243,7 +262,7 @@ bot.on('message:dice', async (ctx) => {
   }
 
   // ==========================================
-  // Spin Logic (Reaction ပေးထားသူများအတွက် ပုံမှန်အလုပ်လုပ်မည်)
+  // Spin Logic (Reaction ပေးထားပါက ပုံမှန်အတိုင်း လှည့်မည်)
   // ==========================================
   const diceValue = ctx.message.dice.value;
   let replyText = '';

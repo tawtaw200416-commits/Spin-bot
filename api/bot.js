@@ -144,40 +144,61 @@ bot.on('message:dice', async (ctx) => {
   if (!isComment) return;
 
   const userId = ctx.from.id;
+  const rawUsername = ctx.from.username || ctx.from.first_name || `ID: ${userId}`;
+  const displayName = ctx.from.username ? `@${ctx.from.username}` : rawUsername;
 
   // ==========================================
-  // Reaction စစ်ဆေးသည့် Logic (Channel Post ကို Reaction ပေးထားခြင်း ရှိ/မရှိ)
+  // Reaction (အသဲ/Like) စစ်ဆေးပေးသည့် အစိတ်အပိုင်း
   // ==========================================
   try {
-    const targetMessageId = ctx.message.reply_to_message?.message_id;
+    const replyMessage = ctx.message.reply_to_message;
 
-    if (targetMessageId) {
+    if (replyMessage) {
+      // 1. Target Message ၏ ID ယူခြင်း
+      const targetMessageId = replyMessage.message_id;
+
+      // 2. Reaction များကို တိုက်ရိုက် စစ်ဆေးခြင်း
       const userReactions = await ctx.api.getMessageReactions(ctx.chat.id, targetMessageId, {
         user_id: userId
       });
 
+      // 3. User ကိုယ်တိုင် Reaction မပေးထားပါက Spin လှည့်ခွင့် မပြုပါ
       if (!userReactions || userReactions.length === 0) {
+        
+        // Channel Post Link တည်ဆောက်ခြင်း
+        let postLink = '';
+        if (ctx.chat.username) {
+          postLink = `https://t.me/${ctx.chat.username}/${targetMessageId}`;
+        } else {
+          // Private Group/Channel များအတွက် Clean ID
+          const cleanChatId = ctx.chat.id.toString().replace('-100', '');
+          postLink = `https://t.me/c/${cleanChatId}/${targetMessageId}`;
+        }
+
         const warningMsg = await ctx.reply(
-          `⚠️ <b>@${ctx.from.username || ctx.from.first_name}</b>, Post ကို Reaction (အသဲ/Like) ပေးပြီးမှ Spin လှည့်ပါ!`,
+          `🚫 <b>Access Denied!</b>\n\n` +
+          `Hey ${displayName}, you must react (❤️/👍) to the original post before you can spin!\n\n` +
+          `👉 <a href="${postLink}">Click here to React to the Post</a>`,
           { 
             parse_mode: 'HTML',
-            reply_to_message_id: ctx.message.message_id 
+            reply_to_message_id: ctx.message.message_id,
+            disable_web_page_preview: true
           }
         );
         
+        // သတိပေးစာကို 5 စက္ကန့်အကြာတွင် ဖျက်ပါမည်
         deleteMessageLater(ctx, ctx.chat.id, warningMsg.message_id, 5000);
-        return; // Reaction မပေးထားပါက Spin လုပ်ငန်းစဉ်ကို ရပ်ဆိုင်းမည်
+        return; // Spin ရလဒ် ထွက်မလာစေရန် ဤနေရာတွင် ရပ်ဆိုင်းပါသည်
       }
     }
   } catch (reactErr) {
-    console.error("Reaction check error:", reactErr);
+    console.error("Reaction Verification Error:", reactErr);
   }
 
+  // ==========================================
+  // Spin Logic (ယခင်မူရင်းအတိုင်း)
+  // ==========================================
   const diceValue = ctx.message.dice.value;
-  
-  const rawUsername = ctx.from.username || ctx.from.first_name || `ID: ${userId}`;
-  const displayName = ctx.from.username ? `@${ctx.from.username}` : rawUsername;
-
   let replyText = '';
   const winCombination = getSlotResult(diceValue);
   const reward = winCombination ? winCombination.reward : 0;

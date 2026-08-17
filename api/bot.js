@@ -56,7 +56,7 @@ const deleteMessageLater = (ctx, chatId, messageId, delay = 5000) => {
   }
 };
 
-// Reaction Event Listener (Database တွင် မှတ်တမ်းတင်မည်)
+// Reaction Event Listener (Channel / Group Post အား Reaction ပေးပါက မှတ်တမ်းတင်မည်)
 bot.on('message_reaction', async (ctx) => {
   try {
     const reaction = ctx.messageReaction;
@@ -169,50 +169,61 @@ bot.on('message:dice', async (ctx) => {
   const rawUsername = ctx.from.username || ctx.from.first_name || `ID: ${userId}`;
   const displayName = ctx.from.username ? `@${ctx.from.username}` : rawUsername;
 
-  // Comment Thread ID ကို ရယူခြင်း
-  const threadId = ctx.message.message_thread_id || (ctx.message.reply_to_message ? ctx.message.reply_to_message.message_id : null);
+  // အောက်ပါအတိုင်း မူရင်း Channel Message / Post ID ကို တိကျစွာ ရှာဖွေပါမည်
+  let channelPostId = null;
+
+  if (ctx.message.reply_to_message) {
+    // 1. မူရင်း Post မှ တိုက်ရိုက် Auto-Forward လာသော Message ဖြစ်ပါက
+    if (ctx.message.reply_to_message.forward_from_message_id) {
+      channelPostId = ctx.message.reply_to_message.forward_from_message_id;
+    } else {
+      channelPostId = ctx.message.reply_to_message.message_id;
+    }
+  }
+
+  // Topic ID (Comment Thread ID) ကို ရယူခြင်း
+  const threadId = ctx.message.message_thread_id;
 
   // ==========================================
-  // Reaction စစ်ဆေးသည့် Logic
+  // Reaction (အသဲ) ပေးထားခြင်း ရှိ/မရှိ စစ်ဆေးခြင်း
   // ==========================================
-  try {
-    const replyMessage = ctx.message.reply_to_message;
-
-    if (replyMessage) {
-      const targetMessageId = replyMessage.message_id;
-
+  if (channelPostId) {
+    try {
       const { data: reactionData } = await supabase
         .from('reactions')
         .select('id')
-        .eq('message_id', targetMessageId)
+        .eq('message_id', channelPostId)
         .eq('telegram_id', userId)
         .maybeSingle();
 
-      // Reaction မပေးထားပါက -
+      // အကယ်၍ Reaction မပေးထားပါက
       if (!reactionData) {
-        // ၁။ Spin Message (Dice) ကို တန်းဖျက်မည်
+        // ၁။ လှည့်လိုက်သော Spin (Dice) Message ကို ချက်ချင်း ဖျက်မည်
         try {
           await ctx.api.deleteMessage(ctx.chat.id, ctx.message.message_id);
         } catch (delErr) {
-          console.error("Spin message delete error:", delErr);
+          console.error("Failed to delete dice:", delErr);
         }
 
-        // ၂။ Channel Post Link တည်ဆောက်ခြင်း
+        // ၂။ Post Link တည်ဆောက်ခြင်း
         let postLink = '';
         if (ctx.chat.username) {
-          postLink = `https://t.me/${ctx.chat.username}/${targetMessageId}`;
+          postLink = `https://t.me/${ctx.chat.username}/${channelPostId}`;
         } else {
           const cleanChatId = ctx.chat.id.toString().replace('-100', '');
-          postLink = `https://t.me/c/${cleanChatId}/${targetMessageId}`;
+          postLink = `https://t.me/c/${cleanChatId}/${channelPostId}`;
         }
 
-        // ၃။ Comment Thread ထဲသို့ သတိပေးစာ ပို့မည်
+        // ၃။ သတိပေးစာ ပို့မည့် Option (ယခု မန့်ထားသော Comment Thread ထဲသို့သာ ပို့မည်)
         const warningOptions = { 
           parse_mode: 'HTML',
           disable_web_page_preview: true
         };
+
         if (threadId) {
           warningOptions.message_thread_id = threadId;
+        } else if (ctx.message.reply_to_message) {
+          warningOptions.reply_to_message_id = ctx.message.reply_to_message.message_id;
         }
 
         const warningMsg = await ctx.reply(
@@ -224,15 +235,15 @@ bot.on('message:dice', async (ctx) => {
         
         // ၄။ သတိပေးစာကို ၅ စက္ကန့်အကြာတွင် ဖျက်မည်
         deleteMessageLater(ctx, ctx.chat.id, warningMsg.message_id, 5000);
-        return; // Spin ဆက်မသွားစေရန် ရပ်ပါမည်
+        return; // Spin ရလဒ် ပို့ပေးခြင်းမပြုဘဲ ရပ်ဆိုင်းမည်
       }
+    } catch (reactErr) {
+      console.error("Reaction Database Check Error:", reactErr);
     }
-  } catch (reactErr) {
-    console.error("Reaction Database Check Error:", reactErr);
   }
 
   // ==========================================
-  // Spin Logic (Reaction ပေးထားပါက အောက်ပါအတိုင်း ပုံမှန် အလုပ်လုပ်ပါမည်)
+  // Spin Logic (Reaction ပေးထားသူများအတွက် ပုံမှန်အလုပ်လုပ်မည်)
   // ==========================================
   const diceValue = ctx.message.dice.value;
   let replyText = '';
@@ -296,7 +307,6 @@ bot.on('message:dice', async (ctx) => {
     replyOptions.message_thread_id = threadId;
   }
 
-  // Spin ရလဒ် စာပြန်ပေးခြင်း
   await ctx.reply(replyText, replyOptions);
 });
 

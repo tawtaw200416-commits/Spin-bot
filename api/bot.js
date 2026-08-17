@@ -38,7 +38,7 @@ bot.catch((err) => {
   console.error('Error in bot:', err);
 });
 
-// Vercel Environment အတွက် 5s ပြည့်ပါက သေချာပေါက် ဖျက်ပေးမည့် Helper Function
+// Delay ဖြင့် Async Message ဖျက်ပေးမည့် Helper Function (Vercel Safe)
 const deleteMessageLater = async (ctx, chatId, messageId, delay = 5000) => {
   await sleep(delay);
   try {
@@ -47,41 +47,6 @@ const deleteMessageLater = async (ctx, chatId, messageId, delay = 5000) => {
     console.error('Delete message failed:', e);
   }
 };
-
-// ==========================================
-// Reaction Event Handling
-// User Reaction ပေးထားသရွေ့ DB တွင် မှတ်ထားမည်၊ ဖြုတ်လိုက်ပါက DB မှ ဖျက်မည်
-// ==========================================
-bot.on('message_reaction', async (ctx) => {
-  try {
-    const reaction = ctx.messageReaction;
-    if (!reaction) return;
-
-    const messageId = reaction.message_id;
-    const userId = reaction.user?.id || reaction.actor_chat?.id;
-    const newReactions = reaction.new_reaction || [];
-
-    if (!userId) return;
-
-    if (newReactions.length > 0) {
-      // Reaction ပေးထားပါက DB သို့ သွင်းမည်
-      await supabase.from('reactions').upsert({
-        message_id: messageId,
-        telegram_id: userId,
-        has_reacted: true,
-        updated_at: new Date().toISOString()
-      }, { onConflict: 'message_id,telegram_id' });
-    } else {
-      // Reaction ပြန်ဖြုတ်လိုက်ပါက DB မှ ဖျက်မည်
-      await supabase.from('reactions')
-        .delete()
-        .eq('message_id', messageId)
-        .eq('telegram_id', userId);
-    }
-  } catch (err) {
-    console.error("Reaction Event Error:", err);
-  }
-});
 
 // 1. /start Command (မူရင်းအတိုင်း)
 bot.command('start', async (ctx) => {
@@ -157,7 +122,7 @@ bot.command('broadcast', async (ctx) => {
   }
 });
 
-// 4. Slot Machine Dice Handling (Reaction Check ပါဝင်သော ပြင်ဆင်ချက်)
+// 4. Slot Machine Dice Handling
 bot.on('message:dice', async (ctx) => {
   if (!ctx.message.dice || ctx.message.dice.emoji !== '🎰') return;
 
@@ -171,86 +136,82 @@ bot.on('message:dice', async (ctx) => {
   const replyMsg = ctx.message.reply_to_message;
   const threadId = ctx.message.message_thread_id;
 
-  // Possible Target Message IDs စစ်ဆေးခြင်း
-  let possibleMsgIds = [];
+  // Reaction ပေးရမည့် Main Post/Message ID သတ်မှတ်ခြင်း
+  let targetPostId = threadId || (replyMsg ? replyMsg.message_id : null);
   let channelUsername = null;
   let channelChatId = null;
 
-  if (threadId) possibleMsgIds.push(threadId);
-
   if (replyMsg) {
-    possibleMsgIds.push(replyMsg.message_id);
-    if (replyMsg.forward_from_message_id) possibleMsgIds.push(replyMsg.forward_from_message_id);
     if (replyMsg.forward_from_chat) {
       channelUsername = replyMsg.forward_from_chat.username;
       channelChatId = replyMsg.forward_from_chat.id;
     }
-    if (replyMsg.external_reply?.message_id) {
-      possibleMsgIds.push(replyMsg.external_reply.message_id);
-      if (replyMsg.external_reply.chat) {
-        channelUsername = replyMsg.external_reply.chat.username;
-        channelChatId = replyMsg.external_reply.chat.id;
-      }
-    }
-  }
-
-  // Database တွင် Reaction ရှိ/မရှိ စစ်ဆေးခြင်း
-  let hasReacted = false;
-  if (possibleMsgIds.length > 0) {
-    try {
-      const { data: reactionData } = await supabase
-        .from('reactions')
-        .select('id')
-        .in('message_id', possibleMsgIds)
-        .eq('telegram_id', userId);
-
-      if (reactionData && reactionData.length > 0) {
-        hasReacted = true;
-      }
-    } catch (reactErr) {
-      console.error("Reaction Query Error:", reactErr);
+    if (replyMsg.external_reply?.chat) {
+      channelUsername = replyMsg.external_reply.chat.username;
+      channelChatId = replyMsg.external_reply.chat.id;
     }
   }
 
   // ==========================================
-  // Reaction မပေးထားပါက Spin ကို ပျက်စေပြီး Warning စာ ပို့မည်
+  // Post တွင် User Reaction ပေးထားခြင်း ရှိ/မရှိ စစ်ဆေးခြင်း
+  // ==========================================
+  let hasReacted = false;
+
+  try {
+    // Reply ထားသော Channel သို့မဟုတ် Group Chat ထဲမှ Post
+    const checkChatId = channelChatId || ctx.chat.id;
+    
+    if (targetPostId) {
+      // Telegram API ထံမှ Message Details ရယူပြီး Reactions စစ်ဆေးမည်
+      const msgInfo = await ctx.api.getMessageReactions(checkChatId, targetPostId);
+      if (msgInfo && msgInfo.length > 0) {
+        // User Reaction ပေးထားပါက hasReacted ကို true အဖြစ် သတ်မှတ်မည်
+        hasReacted = msgInfo.some(r => r.user?.id === userId || r.actor_chat?.id === userId);
+      }
+    }
+  } catch (reactErr) {
+    console.error("Reaction Verification Error:", reactErr.message);
+    // API Call မရလျှင်လည်း Fallback အနေဖြင့် Spin ကို ခွင့်ပြုရန် သို့မဟုတ် စစ်ဆေးရန် standard catch
+  }
+
+  // ==========================================
+  // Reaction မရှိပါက Spin ဖျက်ပြီး သတိပေးစာ ပို့မည်
   // ==========================================
   if (!hasReacted) {
-    // 1. ရိုက်လိုက်သော Spin (Dice) ကို ဖျက်မည်
+    // 1. User ရိုက်လိုက်သော Spin (Dice) Message ကို ချက်ချင်း ဖျက်မည်
     try {
       await ctx.api.deleteMessage(ctx.chat.id, ctx.message.message_id);
     } catch (delErr) {
-      console.error("Failed to delete dice:", delErr);
+      console.error("Failed to delete user dice:", delErr.message);
     }
 
     // 2. Post Link ပြင်ဆင်ခြင်း
-    const targetMsgId = possibleMsgIds[possibleMsgIds.length - 1] || ctx.message.message_id;
     let postLink = '';
+    const finalPostId = targetPostId || ctx.message.message_id;
+
     if (channelUsername) {
-      postLink = `https://t.me/${channelUsername}/${targetMsgId}`;
+      postLink = `https://t.me/${channelUsername}/${finalPostId}`;
     } else if (channelChatId) {
       const cleanChatId = channelChatId.toString().replace('-100', '');
-      postLink = `https://t.me/c/${cleanChatId}/${targetMsgId}`;
+      postLink = `https://t.me/c/${cleanChatId}/${finalPostId}`;
     } else if (ctx.chat.username) {
-      postLink = `https://t.me/${ctx.chat.username}/${targetMsgId}`;
+      postLink = `https://t.me/${ctx.chat.username}/${finalPostId}`;
     } else {
       const cleanChatId = ctx.chat.id.toString().replace('-100', '');
-      postLink = `https://t.me/c/${cleanChatId}/${targetMsgId}`;
+      postLink = `https://t.me/c/${cleanChatId}/${finalPostId}`;
     }
 
-    // 3. သတိပေးစာ ပို့ရန် Options ပြင်ဆင်ခြင်း
+    // 3. Warning Message Options
     const warningOptions = { 
       parse_mode: 'HTML',
       disable_web_page_preview: true
     };
+
     if (threadId) {
       warningOptions.message_thread_id = threadId;
     }
-    if (replyMsg) {
-      warningOptions.reply_parameters = { message_id: replyMsg.message_id };
-    }
 
-    // 4. Warning Message ပို့မည်
+    // 4. Access Denied သတိပေးစာ ပို့မည်
     const warningMsg = await ctx.reply(
       `🚫 <b>Access Denied!</b>\n\n` +
       `Hey ${displayName}, you must react (❤️/👍) to the original post before you can spin!\n\n` +
@@ -258,13 +219,13 @@ bot.on('message:dice', async (ctx) => {
       warningOptions
     );
 
-    // 5. Warning စာကို ၅ စက္ကန့်ပြည့်ပါက Auto ဖျက်မည်
+    // 5. သတိပေးစာကို ၅ စက္ကန့်အကြာတွင် Auto ဖျက်မည်
     await deleteMessageLater(ctx, ctx.chat.id, warningMsg.message_id, 5000);
     return;
   }
 
   // ==========================================
-  // Reaction ပေးထားပါက Normal Spin လှည့်မည် (မူရင်းအတိုင်း)
+  // Reaction ရှိပါက Normal Spin ပေါင်းမည် (မူရင်းအတိုင်း)
   // ==========================================
   const diceValue = ctx.message.dice.value;
   let replyText = '';
@@ -321,7 +282,7 @@ bot.on('message:dice', async (ctx) => {
 
   const replyOptions = { 
     parse_mode: 'HTML',
-    reply_parameters: { message_id: ctx.message.message_id }
+    reply_to_message_id: ctx.message.message_id
   };
   
   if (threadId) {
@@ -332,7 +293,7 @@ bot.on('message:dice', async (ctx) => {
   await deleteMessageLater(ctx, ctx.chat.id, sentMsg.message_id, 5000);
 });
 
-// Vercel Serverless Native Handler (မူရင်းအတိုင်း)
+// Vercel Serverless Webhook Handler (မူရင်းအတိုင်း)
 const handleWebhook = webhookCallback(bot, 'std/http');
 
 module.exports = async (req, res, context) => {

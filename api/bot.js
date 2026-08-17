@@ -1,7 +1,7 @@
 const { Bot, webhookCallback } = require('grammy');
 const { createClient } = require('@supabase/supabase-js');
 
-// Supabase & Bot Configuration
+// Supabase Configuration
 const SUPABASE_URL = process.env.SUPABASE_URL || 'https://bncbaexhrofqslsfovow.supabase.co';
 const SUPABASE_KEY = process.env.SUPABASE_ANON_KEY || 'Sb_publishable_i2ZbSs9hDGTOFSYOuhn6kg_dRTyZZC0';
 const BOT_TOKEN = process.env.BOT_TOKEN || '8566391789:AAHxMWzB5EERqVAHI7Uf7rQodKzxVbv6SbM';
@@ -9,10 +9,10 @@ const BOT_TOKEN = process.env.BOT_TOKEN || '8566391789:AAHxMWzB5EERqVAHI7Uf7rQod
 const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 const bot = new Bot(BOT_TOKEN);
 
-// Delay/Sleep Helper Function
+// Sleep Helper Function
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-// Slot Machine ရလဒ်နှင့် ဆုကြေးများ တွက်ချက်သည့် Function
+// Slot Machine ရလဒ် တွက်ချက်သည့် Function (မူရင်းအတိုင်း)
 const getSlotResult = (value) => {
   let v = value - 1;
   let r1 = v % 4;             
@@ -23,7 +23,7 @@ const getSlotResult = (value) => {
     0: { name: '🏷️ BAR BAR BAR', reward: 0.00080 },
     1: { name: '🍇 🍇 🍇',       reward: 0.00050 },
     2: { name: '🍋 🍋 🍋',       reward: 0.00030 },
-    3: { name: '7️⃣ 7️⃣ 7️⃣ (Jackpot)', reward: 0.00100 }
+    3: { name: '7️⃣ 7️⃣ 7️⃣ (Jackpot)', reward: 0.0010 }
   };
 
   if (r1 === r2 && r2 === r3) {
@@ -33,23 +33,24 @@ const getSlotResult = (value) => {
   return null;
 };
 
-// စာကို ၅ စက္ကန့်အကြာတွင် သေချာ ပျက်စေရန် asynchronous safe function
-const deleteMessageAfterDelay = async (ctx, chatId, messageId, delayMs = 5000) => {
-  await sleep(delayMs);
+// Error Handling
+bot.catch((err) => {
+  console.error('Error in bot:', err);
+});
+
+// Vercel Environment အတွက် 5s ပြည့်ပါက သေချာပေါက် ဖျက်ပေးမည့် Helper Function
+const deleteMessageLater = async (ctx, chatId, messageId, delay = 5000) => {
+  await sleep(delay);
   try {
     await ctx.api.deleteMessage(chatId, messageId);
-  } catch (err) {
-    console.error(`Failed to delete message ${messageId}:`, err.message);
+  } catch (e) {
+    console.error('Delete message failed:', e);
   }
 };
 
-bot.catch((err) => {
-  console.error('Error in bot execution:', err);
-});
-
 // ==========================================
-// 1. Reaction Event Handling
-// User က Reaction ပေးထားရင် DB မှာ အမြဲမှတ်ထားမယ်၊ ဖြုတ်လိုက်ရင် DB မှ ဖျက်မယ်
+// Reaction Event Handling
+// User Reaction ပေးထားသရွေ့ DB တွင် မှတ်ထားမည်၊ ဖြုတ်လိုက်ပါက DB မှ ဖျက်မည်
 // ==========================================
 bot.on('message_reaction', async (ctx) => {
   try {
@@ -63,7 +64,7 @@ bot.on('message_reaction', async (ctx) => {
     if (!userId) return;
 
     if (newReactions.length > 0) {
-      // User က Reaction ပေးလိုက်သည့်အတွက် DB တွင် Record သွင်းထားမည်
+      // Reaction ပေးထားပါက DB သို့ သွင်းမည်
       await supabase.from('reactions').upsert({
         message_id: messageId,
         telegram_id: userId,
@@ -71,18 +72,18 @@ bot.on('message_reaction', async (ctx) => {
         updated_at: new Date().toISOString()
       }, { onConflict: 'message_id,telegram_id' });
     } else {
-      // User က Reaction ပြန်ဖြုတ်လိုက်သည့်အတွက် DB မှ Record ဖျက်ပစ်မည်
+      // Reaction ပြန်ဖြုတ်လိုက်ပါက DB မှ ဖျက်မည်
       await supabase.from('reactions')
         .delete()
         .eq('message_id', messageId)
         .eq('telegram_id', userId);
     }
   } catch (err) {
-    console.error("Reaction Update Error:", err);
+    console.error("Reaction Event Error:", err);
   }
 });
 
-// /start Command
+// 1. /start Command (မူရင်းအတိုင်း)
 bot.command('start', async (ctx) => {
   const userId = ctx.from?.id;
   const rawUsername = ctx.from?.username || ctx.from?.first_name || `ID: ${userId}`;
@@ -90,16 +91,73 @@ bot.command('start', async (ctx) => {
 
   const startMessage = `<b>Welcome ${displayName}! 🎰</b>\n` +
     `<b>Play Jackpot and earn rewards!</b>\n` +
-    `<blockquote><b>Balance = <code>0.000000 💎</code></b></blockquote>\n` +
+    `<blockquote><b>Balance = <code>0.0000 💎</code></b></blockquote>\n` +
     `<b>Mini Withdraw 0.05 GRAM💰,@Rampage528📢</b>`;
 
   const sent = await ctx.reply(startMessage, { parse_mode: 'HTML' });
-  await deleteMessageAfterDelay(ctx, ctx.chat.id, sent.message_id, 5000);
+  await deleteMessageLater(ctx, ctx.chat.id, sent.message_id, 5000);
 });
 
-// ==========================================
-// 2. Dice (Slot Machine) Event Handling
-// ==========================================
+// 2. /spin Command (မူရင်းအတိုင်း)
+bot.command('spin', async (ctx) => {
+  await ctx.replyWithDice('🎰');
+});
+
+// 3. Admin Broadcast Command (မူရင်းအတိုင်း)
+bot.command('broadcast', async (ctx) => {
+  const userId = ctx.from?.id;
+  
+  if (userId !== 1793453606) {
+    return ctx.reply('❌ This command is restricted.');
+  }
+
+  const customMessage = ctx.match;
+
+  if (!customMessage) {
+    return ctx.reply('⚠️ ကျေးဇူးပြု၍ ပို့လိုသော စာသားကို ထည့်ပါ။\n\n<b>ပုံစံ -</b> <code>/broadcast your_message_here</code>', { parse_mode: 'HTML' });
+  }
+
+  try {
+    const { data: users, error } = await supabase
+      .from('users')
+      .select('telegram_id');
+
+    if (error || !users || users.length === 0) {
+      return ctx.reply('❌ Database မှ User စာရင်းများကို ဆွဲထုတ်၍ မရပါ (သို့) User မရှိပါ။');
+    }
+
+    const statusMsg = await ctx.reply(`🚀 User ${users.length} ဦးထံသို့ စတင်ပို့ဆောင်နေပါပြီ...`);
+
+    let successCount = 0;
+    let failCount = 0;
+
+    for (const user of users) {
+      try {
+        await ctx.api.sendMessage(user.telegram_id, customMessage, {
+          parse_mode: 'HTML',
+          disable_web_page_preview: false
+        });
+        successCount++;
+        await sleep(50); 
+      } catch (err) {
+        failCount++; 
+      }
+    }
+
+    await ctx.api.editMessageText(
+      ctx.chat.id, 
+      statusMsg.message_id, 
+      `✅ <b>Broadcast ပြီးစီးပါပြီ!</b>\n\n📤 ပို့ဆောင်နိုင်သူ - ${successCount} ဦး\n❌ မပို့နိုင်သူ - ${failCount} ဦး`, 
+      { parse_mode: 'HTML' }
+    );
+
+  } catch (err) {
+    console.error("Broadcast Error:", err);
+    await ctx.reply('❌ Broadcast လုပ်ရာတွင် အမှားအယွင်း ရှိနေပါသည်။');
+  }
+});
+
+// 4. Slot Machine Dice Handling (Reaction Check ပါဝင်သော ပြင်ဆင်ချက်)
 bot.on('message:dice', async (ctx) => {
   if (!ctx.message.dice || ctx.message.dice.emoji !== '🎰') return;
 
@@ -113,7 +171,7 @@ bot.on('message:dice', async (ctx) => {
   const replyMsg = ctx.message.reply_to_message;
   const threadId = ctx.message.message_thread_id;
 
-  // စစ်ဆေးရမည့် Message IDs များကို စုဆောင်းခြင်း
+  // Possible Target Message IDs စစ်ဆေးခြင်း
   let possibleMsgIds = [];
   let channelUsername = null;
   let channelChatId = null;
@@ -136,7 +194,7 @@ bot.on('message:dice', async (ctx) => {
     }
   }
 
-  // Database တွင် Reaction ပေးထားဆဲဖြစ်ကြောင်း စစ်ဆေးခြင်း
+  // Database တွင် Reaction ရှိ/မရှိ စစ်ဆေးခြင်း
   let hasReacted = false;
   if (possibleMsgIds.length > 0) {
     try {
@@ -147,25 +205,25 @@ bot.on('message:dice', async (ctx) => {
         .eq('telegram_id', userId);
 
       if (reactionData && reactionData.length > 0) {
-        hasReacted = true; // Reaction ရှိနေပါသည် (မဖြုတ်သရွေ့ အမြဲ true ဖြစ်နေမည်)
+        hasReacted = true;
       }
     } catch (reactErr) {
       console.error("Reaction Query Error:", reactErr);
     }
   }
 
-  // ------------------------------------------
-  // A. Reaction မရှိလျှင် သို့မဟုတ် ဖြုတ်လိုက်လျှင် (Access Denied)
-  // ------------------------------------------
+  // ==========================================
+  // Reaction မပေးထားပါက Spin ကို ပျက်စေပြီး Warning စာ ပို့မည်
+  // ==========================================
   if (!hasReacted) {
-    // 1. ရိုက်လိုက်သော Slot Machine Dice Message ကို ချက်ချင်း ဖျက်မည်
+    // 1. ရိုက်လိုက်သော Spin (Dice) ကို ဖျက်မည်
     try {
       await ctx.api.deleteMessage(ctx.chat.id, ctx.message.message_id);
-    } catch (e) {
-      console.error("Failed to delete user dice:", e);
+    } catch (delErr) {
+      console.error("Failed to delete dice:", delErr);
     }
 
-    // 2. Link တည်ဆောက်ခြင်း
+    // 2. Post Link ပြင်ဆင်ခြင်း
     const targetMsgId = possibleMsgIds[possibleMsgIds.length - 1] || ctx.message.message_id;
     let postLink = '';
     if (channelUsername) {
@@ -180,13 +238,19 @@ bot.on('message:dice', async (ctx) => {
       postLink = `https://t.me/c/${cleanChatId}/${targetMsgId}`;
     }
 
+    // 3. သတိပေးစာ ပို့ရန် Options ပြင်ဆင်ခြင်း
     const warningOptions = { 
       parse_mode: 'HTML',
       disable_web_page_preview: true
     };
-    if (threadId) warningOptions.message_thread_id = threadId;
+    if (threadId) {
+      warningOptions.message_thread_id = threadId;
+    }
+    if (replyMsg) {
+      warningOptions.reply_parameters = { message_id: replyMsg.message_id };
+    }
 
-    // 3. သတိပေးစာ ပို့မည်
+    // 4. Warning Message ပို့မည်
     const warningMsg = await ctx.reply(
       `🚫 <b>Access Denied!</b>\n\n` +
       `Hey ${displayName}, you must react (❤️/👍) to the original post before you can spin!\n\n` +
@@ -194,74 +258,81 @@ bot.on('message:dice', async (ctx) => {
       warningOptions
     );
 
-    // 4. သတိပေးစာကို ၅ စက္ကန့်အကြာတွင် ဖျက်မည်
-    await deleteMessageAfterDelay(ctx, ctx.chat.id, warningMsg.message_id, 5000);
+    // 5. Warning စာကို ၅ စက္ကန့်ပြည့်ပါက Auto ဖျက်မည်
+    await deleteMessageLater(ctx, ctx.chat.id, warningMsg.message_id, 5000);
     return;
   }
 
-  // ------------------------------------------
-  // B. Reaction ရှိလျှင် (မဖြုတ်မချင်း အကြိမ်ကြိမ် Spin လှည့်နိုင်မည်)
-  // ------------------------------------------
+  // ==========================================
+  // Reaction ပေးထားပါက Normal Spin လှည့်မည် (မူရင်းအတိုင်း)
+  // ==========================================
   const diceValue = ctx.message.dice.value;
+  let replyText = '';
   const winCombination = getSlotResult(diceValue);
   const reward = winCombination ? winCombination.reward : 0;
 
-  let newBalance = 0;
-
   try {
-    // လက်ရှိ Balance ကို ရယူခြင်း
-    const { data: user } = await supabase
+    let { data: user } = await supabase
       .from('users')
       .select('balance')
       .eq('telegram_id', userId)
       .maybeSingle();
 
-    const currentBalance = user && user.balance ? parseFloat(user.balance) : 0;
-    
-    // Balance ကို တိကျစွာ ပေါင်းစပ်ခြင်း (6 Decimal Precision)
-    newBalance = parseFloat((currentBalance + reward).toFixed(6));
+    let currentBalance = user && user.balance ? parseFloat(user.balance) : 0;
+    let newBalance = currentBalance;
 
-    // Balance ကို DB သို့ သိမ်းဆည်းခြင်း (အဟောင်း Data မပျက်စေဘဲ Update လုပ်မည်)
+    if (reward > 0) {
+      newBalance = Math.round((currentBalance + reward) * 1000000) / 1000000;
+    }
+
     await supabase.from('users').upsert({
       telegram_id: userId,
       username: rawUsername,
-      balance: newBalance,
-      updated_at: new Date().toISOString()
+      balance: newBalance
     }, { onConflict: 'telegram_id' });
 
-  } catch (dbErr) {
-    console.error("Supabase Balance Update Error:", dbErr);
-  }
-
-  // Reply Text ပြင်ဆင်ခြင်း
-  let replyText = '';
-  if (winCombination) {
-    replyText = `🎉 <b>Congratulations ${displayName}!</b>\n` +
-      `<b>You got ${winCombination.name} and received ${reward.toFixed(5)} GRAM!</b>\n` +
-      `<blockquote><b>Balance = <code>${newBalance.toFixed(6)} 💎</code></b></blockquote>\n` +
-      `<b>Mini Withdraw = 0.05 GRAM💰,📢@Rampage528</b>`;
-  } else {
-    replyText = `❌ <b>Try again ${displayName}! Better luck next time.</b>\n` +
-      `<blockquote><b>Balance = <code>${newBalance.toFixed(6)} 💎</code></b></blockquote>\n` +
-      `<b>Mini Withdraw = 0.05 GRAM💰,📢@Rampage528</b>`;
+    if (winCombination) {
+      replyText = `🎉 <b>Congratulations ${displayName}!</b>\n` +
+        `<b>You got ${winCombination.name} and received ${reward} GRAM!</b>\n` +
+        `<blockquote><b>Balance = <code>${newBalance.toFixed(6)} 💎</code></b></blockquote>\n` +
+        `<b>Mini Withdraw = 0.05 GRAM💰,📢@Rampage528</b>`;
+    } else {
+      replyText = `❌ <b>Try again ${displayName}! Better luck next time.</b>\n` +
+        `<blockquote><b>Balance = <code>${newBalance.toFixed(6)} 💎</code></b></blockquote>\n` +
+        `<b>Mini Withdraw = 0.05 GRAM💰,📢@Rampage528</b>`;
+    }
+  } catch (error) {
+    console.error("Supabase Error:", error);
+    try {
+      let { data: user } = await supabase
+        .from('users')
+        .select('balance')
+        .eq('telegram_id', userId)
+        .maybeSingle();
+      let currentBalance = user && user.balance ? parseFloat(user.balance) : 0;
+      replyText = `❌ <b>Try again ${displayName}! Better luck next time.</b>\n` +
+        `<blockquote><b>Balance = <code>${currentBalance.toFixed(6)} 💎</code></b></blockquote>\n` +
+        `<b>Mini Withdraw = 0.05 GRAM💰,@Rampage528📢</b>`;
+    } catch (e) {
+      replyText = `❌ <b>Try again ${displayName}! Better luck next time.</b>\n` +
+        `<b>Mini Withdraw = 0.05 GRAM💰,@REFERWORLD1📢</b>`;
+    }
   }
 
   const replyOptions = { 
     parse_mode: 'HTML',
     reply_parameters: { message_id: ctx.message.message_id }
   };
-  if (threadId) replyOptions.message_thread_id = threadId;
+  
+  if (threadId) {
+    replyOptions.message_thread_id = threadId;
+  }
 
-  // ရလဒ်စာကို ပို့မည်
-  const resultMsg = await ctx.reply(replyText, replyOptions);
-
-  // ရလဒ်စာကို ၅ စက္ကန့်အကြာတွင် ဖျက်မည်
-  await deleteMessageAfterDelay(ctx, ctx.chat.id, resultMsg.message_id, 5000);
+  const sentMsg = await ctx.reply(replyText, replyOptions);
+  await deleteMessageLater(ctx, ctx.chat.id, sentMsg.message_id, 5000);
 });
 
-// ==========================================
-// 3. Vercel Serverless Webhook Async Context Handling
-// ==========================================
+// Vercel Serverless Native Handler (မူရင်းအတိုင်း)
 const handleWebhook = webhookCallback(bot, 'std/http');
 
 module.exports = async (req, res, context) => {
@@ -270,27 +341,23 @@ module.exports = async (req, res, context) => {
       const host = req.headers.host || 'spin-bot-ten.vercel.app';
       const url = `https://${host}${req.url}`;
       
-      const waitUntil = context && typeof context.waitUntil === 'function' 
-        ? context.waitUntil.bind(context) 
-        : (promise) => promise;
-
       const response = await handleWebhook(
         new Request(url, {
           method: 'POST',
           headers: req.headers,
           body: typeof req.body === 'string' ? req.body : JSON.stringify(req.body || {}),
         }),
-        waitUntil
+        context && context.waitUntil ? context.waitUntil.bind(context) : undefined
       );
 
       res.status(response.status);
       const text = await response.text();
       return res.send(text);
     } catch (err) {
-      console.error("Webhook Execution Error:", err);
+      console.error("Webhook processing error:", err);
       return res.status(200).send('OK');
     }
   }
 
-  return res.status(200).send('Bot Status: Active and Running!');
+  return res.status(200).send('Status: Active!');
 };

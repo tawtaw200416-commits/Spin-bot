@@ -12,7 +12,7 @@ const bot = new Bot(BOT_TOKEN);
 // Sleep Helper Function
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-// Slot Machine ရလဒ်များ တွက်ချက်ခြင်း
+// Telegram Slot Machine ၏ 777 အပါအဝင် တရားဝင် ရလဒ်များအားလုံး တိကျစွာ တွက်ချက်သည့် Function
 const getSlotResult = (value) => {
   let v = value - 1;
   let r1 = v % 4;             
@@ -56,7 +56,7 @@ const deleteMessageLater = (ctx, chatId, messageId, delay = 5000) => {
   }
 };
 
-// Direct Await Message Deletion (Serverless Timeout ပြဿနာ မရှိစေရန်)
+// Direct Await Message Deletion (Serverless Timeout မဖြစ်စေရန်)
 const deleteMessageDirect = async (chatId, messageId, delay = 5000) => {
   await sleep(delay);
   try {
@@ -67,7 +67,7 @@ const deleteMessageDirect = async (chatId, messageId, delay = 5000) => {
 };
 
 // ==========================================
-// Reaction Event Handling (ပေးရင် DB ထည့်၊ ဖြုတ်ရင် DB မှ တိကျစွာ ဖျက်မည်)
+// Reaction Event: User Reaction ပေးရင် DB ထည့်၊ ဖြုတ်ရင် DB မှ တိကျစွာ ဖျက်မည်
 // ==========================================
 bot.on('message_reaction', async (ctx) => {
   try {
@@ -82,7 +82,7 @@ bot.on('message_reaction', async (ctx) => {
 
     const newReactions = reaction.new_reaction || [];
 
-    // Reaction အသစ် ပေးလိုက်ပါက Database ထဲ အဆင့်မြှင့်/ထည့်မည်
+    // Reaction ရှိရင် DB ထဲ သိမ်း/အဆင့်မြှင့်မည်
     if (newReactions.length > 0) {
       await supabase.from('reactions').upsert({
         user_id: userId,
@@ -90,7 +90,7 @@ bot.on('message_reaction', async (ctx) => {
         message_id: messageId
       }, { onConflict: 'user_id,chat_id,message_id' });
     } 
-    // Reaction ပြန်ဖြုတ်လိုက်ပါက Database မှ ချက်ချင်း ဖျက်မည်
+    // Reaction မရှိရင် (ပြန်ဖြုတ်ရင်) DB ထဲက အပြီးဖျက်မည်
     else {
       await supabase.from('reactions')
         .delete()
@@ -194,7 +194,7 @@ bot.on('message:dice', async (ctx) => {
   const replyMsg = ctx.message.reply_to_message;
 
   // ----------------------------------------------------
-  // တိကျသော Post Reaction စစ်ဆေးသည့် စနစ်
+  // Reaction ပေးထားခြင်း ရှိ/မရှိ တိကျစွာ စစ်ဆေးခြင်း
   // ----------------------------------------------------
   let hasReacted = false;
 
@@ -208,7 +208,7 @@ bot.on('message:dice', async (ctx) => {
       }
     }
 
-    // လက်ရှိ Spin လှည့်နေသော Post သို့မဟုတ် Thread မှာ Reaction ပေးထားခြင်း ရှိမရှိသာ တိကျစွာ စစ်ဆေးခြင်း
+    // လှည့်လိုက်သည့် Post သို့မဟုတ် Topic ID မှာ အသုံးပြုသူ၏ Reaction ရှိမှသာ true ဟု ယူမည်
     if (candidateIds.length > 0) {
       const { data: recData } = await supabase
         .from('reactions')
@@ -225,17 +225,17 @@ bot.on('message:dice', async (ctx) => {
   }
 
   // ----------------------------------------------------
-  // A. Reaction မပေးထားလျှင် (သို့မဟုတ်) ပြန်ဖြုတ်ထားလျှင်
+  // A. User က Reaction မပေးထားပါက (သို့မဟုတ် ပြန်ဖြုတ်ထားပါက)
   // ----------------------------------------------------
   if (!hasReacted) {
-    // ၁။ User လှည့်လိုက်သော Spin (Dice) ကို ချက်ချင်း ဖျက်ဆီးမည်
+    // 1. Spin မရအောင် User လှည့်လိုက်သော Dice (Slot) Message ကို ချက်ချင်း ဖျက်ပစ်မည်
     try {
       await ctx.api.deleteMessage(ctx.chat.id, ctx.message.message_id);
     } catch (e) {
       console.error("Error deleting dice:", e.message);
     }
 
-    // ၂။ Post Direct Link ပြင်ဆင်ခြင်း
+    // 2. သက်ဆိုင်ရာ Channel/Group Post Direct Link ထုတ်ယူခြင်း
     const finalPostId = threadId || (replyMsg ? replyMsg.message_id : ctx.message.message_id);
     let postLink = '';
     
@@ -247,7 +247,7 @@ bot.on('message:dice', async (ctx) => {
       postLink = `https://t.me/c/${cleanChatId}/${finalPostId}`;
     }
 
-    // ၃။ Reaction ပေးရန် သတိပေးစာ ထုတ်ပြန်ခြင်း
+    // 3. သတိပေးစာကို သက်ဆိုင်ရာ Comment Thread ထဲသို့ အတိအကျ ပို့မည်
     const warningOptions = { 
       parse_mode: 'HTML',
       disable_web_page_preview: true
@@ -267,13 +267,13 @@ bot.on('message:dice', async (ctx) => {
       warningOptions
     );
 
-    // ၄။ သတိပေးစာကို ၅ စက္ကန့်အကြာတွင် ဖျက်မည်
+    // 4. သတိပေးစာကို ၅ စက္ကန့်ပြည့်လျှင် Auto ဖျက်မည်
     await deleteMessageDirect(ctx.chat.id, warningMsg.message_id, 5000);
     return;
   }
 
   // ----------------------------------------------------
-  // B. Reaction ပေးထားပါက မပျက်ဘဲ ပုံမှန် Spin အလုပ်လုပ်မည်
+  // B. Reaction ပေးထားသူများအတွက် ဆုကြေး တိကျစွာ ပေါင်းထည့်ပေးခြင်း
   // ----------------------------------------------------
   let replyText = '';
   const winCombination = getSlotResult(diceValue);
@@ -289,6 +289,7 @@ bot.on('message:dice', async (ctx) => {
     let currentBalance = user && user.balance ? parseFloat(user.balance) : 0;
     let newBalance = currentBalance;
 
+    // ပေါက်ပါက ရလာသော ပမာဏကို တိကျစွာ ပေါင်းထည့်မည်
     if (reward > 0) {
       newBalance = Math.round((currentBalance + reward) * 1000000) / 1000000;
     }
@@ -327,7 +328,7 @@ bot.on('message:dice', async (ctx) => {
     }
   }
 
-  // Spin ရလဒ် စာကို ပြသမည်
+  // Spin ရလဒ် စာကို Comment Topic / Reply ထဲသို့ ပို့ခြင်း
   const replyOptions = { 
     parse_mode: 'HTML',
     reply_to_message_id: ctx.message.message_id

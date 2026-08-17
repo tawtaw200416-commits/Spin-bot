@@ -38,7 +38,7 @@ bot.catch((err) => {
   console.error('Error in bot:', err);
 });
 
-// Delay ဖြင့် Message ဖျက်ပေးမည့် Helper Function (Vercel Background Async တက်အောင် ပြင်ထားပါသည်)
+// Delay ဖြင့် Message ဖျက်ပေးမည့် Helper Function (Vercel Background Context ပါဝင်သည်)
 const deleteMessageLater = (ctx, chatId, messageId, delay = 5000) => {
   const task = async () => {
     await sleep(delay);
@@ -49,7 +49,6 @@ const deleteMessageLater = (ctx, chatId, messageId, delay = 5000) => {
     }
   };
 
-  // Vercel Serverless Function မပိတ်မီ စောင့်ခိုင်းခြင်း
   if (ctx.waitUntil) {
     ctx.waitUntil(task());
   } else {
@@ -57,7 +56,7 @@ const deleteMessageLater = (ctx, chatId, messageId, delay = 5000) => {
   }
 };
 
-// Reaction Event Listener (Channel / Group Post အား Reaction ပေးပါက မှတ်တမ်းတင်မည်)
+// Reaction Event Listener (Channel / Group Post အား Reaction ပေးပါက DB တွင် မှတ်တမ်းတင်မည်)
 bot.on('message_reaction', async (ctx) => {
   try {
     const reaction = ctx.messageReaction;
@@ -173,7 +172,7 @@ bot.on('message:dice', async (ctx) => {
   const replyMsg = ctx.message.reply_to_message;
   const threadId = ctx.message.message_thread_id;
 
-  // မူရင်း Channel Message ID နှင့် Reaction ပေးရန် Link အတွက် Parameter ရှာဖွေခြင်း
+  // မူရင်း Channel Message ID နှင့် Link အတွက် Parameter များ စုဆောင်းခြင်း
   let possibleMsgIds = [];
   let channelUsername = null;
   let channelChatId = null;
@@ -198,7 +197,7 @@ bot.on('message:dice', async (ctx) => {
   }
 
   // ==========================================
-  // Supabase Reaction စစ်ဆေးခြင်း
+  // DB တွင် Reaction စစ်ဆေးခြင်း
   // ==========================================
   let hasReacted = false;
   if (possibleMsgIds.length > 0) {
@@ -217,16 +216,14 @@ bot.on('message:dice', async (ctx) => {
     }
   }
 
-  // Reaction မပေးထားပါက
+  // Reaction မပေးထားသူများအတွက် - Spin ကိုဖျက်ပြီး သတိပေးစာပို့မည်
   if (!hasReacted) {
-    // ၁။ လှည့်လိုက်သော Spin (Dice) ကို တန်းဖျက်မည်
     try {
       await ctx.api.deleteMessage(ctx.chat.id, ctx.message.message_id);
     } catch (delErr) {
       console.error("Failed to delete dice:", delErr);
     }
 
-    // ၂။ Target Post Link သို့ ညွှန်ပြရန် တည်ဆောက်ခြင်း
     const targetMsgId = possibleMsgIds[possibleMsgIds.length - 1] || ctx.message.message_id;
     let postLink = '';
     if (channelUsername) {
@@ -241,7 +238,6 @@ bot.on('message:dice', async (ctx) => {
       postLink = `https://t.me/c/${cleanChatId}/${targetMsgId}`;
     }
 
-    // ၃။ သတိပေးစာကို Comment Section ထဲသို့သာ တိုက်ရိုက်ကျအောင် reply_to_message_id ပါတွဲပို့မည်
     const warningOptions = { 
       parse_mode: 'HTML',
       disable_web_page_preview: true
@@ -261,13 +257,12 @@ bot.on('message:dice', async (ctx) => {
       warningOptions
     );
 
-    // ၄။ သတိပေးစာကို ၅ စက္ကန့်အကြာတွင် ဖျက်မည်
     deleteMessageLater(ctx, ctx.chat.id, warningMsg.message_id, 5000);
     return;
   }
 
   // ==========================================
-  // Reaction ပေးထားပါက အောက်ပါ Spin Logic ပုံမှန်အလုပ်လုပ်မည်
+  // Reaction ပေးထားပါက - Spin Message ကို မဖျက်ဘဲ ပုံမှန်အတိုင်း လှည့်ခွင့်ပေးမည်
   // ==========================================
   const diceValue = ctx.message.dice.value;
   let replyText = '';
@@ -322,6 +317,7 @@ bot.on('message:dice', async (ctx) => {
     }
   }
 
+  // Reply ပို့မည့် Option များ ပြင်ဆင်ခြင်း
   const replyOptions = { 
     parse_mode: 'HTML',
     reply_to_message_id: ctx.message.message_id

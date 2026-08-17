@@ -12,7 +12,7 @@ const bot = new Bot(BOT_TOKEN);
 // Sleep Helper Function
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-// Telegram Slot Machine ၏ 777 အပါအဝင် တရားဝင် ရလဒ်များအားလုံး တိကျစွာ တွက်ချက်သည့် Function
+// Slot Machine ရလဒ် တွက်ချက်သည့် Function
 const getSlotResult = (value) => {
   let v = value - 1;
   let r1 = v % 4;             
@@ -56,9 +56,7 @@ const deleteMessageLater = (ctx, chatId, messageId, delay = 5000) => {
   }
 };
 
-// ==========================================
-// Reaction Event Listener (အသဲပေးတာကို စောင့်ကြည့်ပြီး Database မှာ မှတ်မည်)
-// ==========================================
+// Reaction Event Listener (Database တွင် မှတ်တမ်းတင်မည်)
 bot.on('message_reaction', async (ctx) => {
   try {
     const reaction = ctx.messageReaction;
@@ -171,8 +169,11 @@ bot.on('message:dice', async (ctx) => {
   const rawUsername = ctx.from.username || ctx.from.first_name || `ID: ${userId}`;
   const displayName = ctx.from.username ? `@${ctx.from.username}` : rawUsername;
 
+  // Comment Thread ID ကို ရယူခြင်း
+  const threadId = ctx.message.message_thread_id || (ctx.message.reply_to_message ? ctx.message.reply_to_message.message_id : null);
+
   // ==========================================
-  // DB ဖြင့် Reaction မဖြစ်မနေ ပေးထားခြင်း ရှိ/မရှိ စစ်ဆေးသည့် Logic
+  // Reaction စစ်ဆေးသည့် Logic
   // ==========================================
   try {
     const replyMessage = ctx.message.reply_to_message;
@@ -180,7 +181,6 @@ bot.on('message:dice', async (ctx) => {
     if (replyMessage) {
       const targetMessageId = replyMessage.message_id;
 
-      // Supabase ရှိ reactions Table ထဲတွင် စစ်ဆေးမည်
       const { data: reactionData } = await supabase
         .from('reactions')
         .select('id')
@@ -188,8 +188,9 @@ bot.on('message:dice', async (ctx) => {
         .eq('telegram_id', userId)
         .maybeSingle();
 
+      // Reaction မပေးထားပါက -
       if (!reactionData) {
-        // ၁။ လှည့်လိုက်သည့် Spin Message (Dice) ကို တန်းဖျက်မည်
+        // ၁။ Spin Message (Dice) ကို တန်းဖျက်မည်
         try {
           await ctx.api.deleteMessage(ctx.chat.id, ctx.message.message_id);
         } catch (delErr) {
@@ -205,20 +206,25 @@ bot.on('message:dice', async (ctx) => {
           postLink = `https://t.me/c/${cleanChatId}/${targetMessageId}`;
         }
 
-        // ၃။ သတိပေးစာ ပို့မည်
+        // ၃။ Comment Thread ထဲသို့ သတိပေးစာ ပို့မည်
+        const warningOptions = { 
+          parse_mode: 'HTML',
+          disable_web_page_preview: true
+        };
+        if (threadId) {
+          warningOptions.message_thread_id = threadId;
+        }
+
         const warningMsg = await ctx.reply(
           `🚫 <b>Access Denied!</b>\n\n` +
           `Hey ${displayName}, you must react (❤️/👍) to the original post before you can spin!\n\n` +
           `👉 <a href="${postLink}">Click here to React to the Post</a>`,
-          { 
-            parse_mode: 'HTML',
-            disable_web_page_preview: true
-          }
+          warningOptions
         );
         
-        // ၄။ သတိပေးစာကို 5 စက္ကန့်ပြပြီးမှ ဖျက်မည်
+        // ၄။ သတိပေးစာကို ၅ စက္ကန့်အကြာတွင် ဖျက်မည်
         deleteMessageLater(ctx, ctx.chat.id, warningMsg.message_id, 5000);
-        return; // Spin ရလဒ် ပို့ပေးခြင်းမပြုဘဲ ဤနေရာတွင် ရပ်ဆိုင်းမည်
+        return; // Spin ဆက်မသွားစေရန် ရပ်ပါမည်
       }
     }
   } catch (reactErr) {
@@ -226,7 +232,7 @@ bot.on('message:dice', async (ctx) => {
   }
 
   // ==========================================
-  // Spin Logic
+  // Spin Logic (Reaction ပေးထားပါက အောက်ပါအတိုင်း ပုံမှန် အလုပ်လုပ်ပါမည်)
   // ==========================================
   const diceValue = ctx.message.dice.value;
   let replyText = '';
@@ -286,14 +292,12 @@ bot.on('message:dice', async (ctx) => {
     reply_to_message_id: ctx.message.message_id
   };
   
-  if (ctx.message.message_thread_id) {
-    replyOptions.message_thread_id = ctx.message.message_thread_id;
+  if (threadId) {
+    replyOptions.message_thread_id = threadId;
   }
 
-  const sentMsg = await ctx.reply(replyText, replyOptions);
-  
-  // အသဲပေးထားသူ လှည့်သော Spin ရလဒ်ကို 5s အကြာတွင် ဖျက်မည်
-  deleteMessageLater(ctx, ctx.chat.id, sentMsg.message_id, 5000);
+  // Spin ရလဒ် စာပြန်ပေးခြင်း
+  await ctx.reply(replyText, replyOptions);
 });
 
 // Vercel Serverless Native Handler

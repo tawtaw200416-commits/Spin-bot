@@ -12,7 +12,7 @@ const bot = new Bot(BOT_TOKEN);
 // Sleep Helper Function
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-// Telegram Slot Machine ၏ 777 အပါအဝင် တရားဝင် ရလဒ်များအားလုံး တိကျစွာ တွက်ချက်သည့် Function
+// Telegram Slot Machine ၏ 777 အပါအဝင် တရားဝင် ရလဒ်များအားလုံး တိကျစွာ တွက်ချက်သည့် Function (မူရင်းအတိုင်း)
 const getSlotResult = (value) => {
   let v = value - 1;
   let r1 = v % 4;             
@@ -38,7 +38,7 @@ bot.catch((err) => {
   console.error('Error in bot:', err);
 });
 
-// Delay ဖြင့် Background မှာ Message ဖျက်ပေးမည့် Helper Function
+// Delay ဖြင့် Background မှာ Message ဖျက်ပေးမည့် Helper Function (မူရင်းအတိုင်း)
 const deleteMessageLater = (ctx, chatId, messageId, delay = 5000) => {
   const promise = (async () => {
     await sleep(delay);
@@ -56,7 +56,7 @@ const deleteMessageLater = (ctx, chatId, messageId, delay = 5000) => {
   }
 };
 
-// Direct Await Message Deletion (Serverless Timeout မဖြစ်အောင် တိုက်ရိုက်ဖျက်ခြင်း)
+// Direct Await Message Deletion (Serverless မှာ ၁၀၀% သေချာစွာ ပျက်စေရန်)
 const deleteMessageDirect = async (chatId, messageId, delay = 5000) => {
   await sleep(delay);
   try {
@@ -67,7 +67,7 @@ const deleteMessageDirect = async (chatId, messageId, delay = 5000) => {
 };
 
 // ==========================================
-// Reaction Events - User Reaction အပြောင်းအလဲ သိမ်းဆည်းခြင်း
+// Reaction Events - User ပေးလိုက်သော (သို့) ပြန်ဖြုတ်လိုက်သော Reaction များကို Supabase တွင် အချိန်နှင့်အမျှ သိမ်းဆည်းခြင်း
 // ==========================================
 bot.on('message_reaction', async (ctx) => {
   try {
@@ -83,17 +83,19 @@ bot.on('message_reaction', async (ctx) => {
     const newReactions = reaction.new_reaction || [];
     const oldReactions = reaction.old_reaction || [];
 
+    // Reaction အသစ် ပေးလိုက်ပါက Database ထဲ ထည့်မည်
     if (newReactions.length > 0) {
       await supabase.from('reactions').upsert({
         user_id: userId,
         chat_id: chatId,
         message_id: messageId
       }, { onConflict: 'user_id,chat_id,message_id' });
-    } else if (newReactions.length === 0 && oldReactions.length > 0) {
+    } 
+    // Reaction ပြန်ဖြုတ်လိုက်ပါက Database မှ ဖျက်မည်
+    else if (newReactions.length === 0 && oldReactions.length > 0) {
       await supabase.from('reactions')
         .delete()
         .eq('user_id', userId)
-        .eq('chat_id', chatId)
         .eq('message_id', messageId);
     }
   } catch (err) {
@@ -101,7 +103,7 @@ bot.on('message_reaction', async (ctx) => {
   }
 });
 
-// 1. /start Command
+// 1. /start Command (မူရင်းအတိုင်း)
 bot.command('start', async (ctx) => {
   const userId = ctx.from?.id;
   const rawUsername = ctx.from?.username || ctx.from?.first_name || `ID: ${userId}`;
@@ -116,13 +118,13 @@ bot.command('start', async (ctx) => {
   deleteMessageLater(ctx, ctx.chat.id, sent.message_id, 5000);
 });
 
-// 2. /spin Command
+// 2. /spin Command (မူရင်းအတိုင်း)
 bot.command('spin', async (ctx) => {
   await ctx.replyWithDice('🎰');
 });
 
 // ==========================================
-// 3. Admin (1793453606) သီးသန့် Broadcast
+// 3. Admin (1793453606) သီးသန့် Broadcast ပို့မည့် Command (မူရင်းအတိုင်း)
 // ==========================================
 bot.command('broadcast', async (ctx) => {
   const userId = ctx.from?.id;
@@ -193,48 +195,72 @@ bot.on('message:dice', async (ctx) => {
   const threadId = ctx.message.message_thread_id;
   const replyMsg = ctx.message.reply_to_message;
 
-  // Post ID ရှာဖွေခြင်း
-  let targetPostId = threadId || (replyMsg ? replyMsg.message_id : null);
-
+  // ----------------------------------------------------
+  // Reaction စစ်ဆေးသည့် စနစ် (Advanced Multi-ID Matching)
+  // ----------------------------------------------------
   let hasReacted = false;
 
-  // ----------------------------------------------------
-  // Reaction စစ်ဆေးသည့် စနစ် (DB + Fallback Check)
-  // ----------------------------------------------------
   try {
-    if (targetPostId) {
-      // 1. Supabase Reactions Table တွင် စစ်ခြင်း
+    // ဖြစ်နိုင်သမျှ Possible Message IDs များကို စုစည်းခြင်း
+    const candidateIds = new Set();
+    if (threadId) candidateIds.add(threadId);
+    if (replyMsg) {
+      candidateIds.add(replyMsg.message_id);
+      if (replyMsg.forward_from_message_id) candidateIds.add(replyMsg.forward_from_message_id);
+    }
+
+    const targetPostIdList = Array.from(candidateIds);
+
+    if (targetPostIdList.length > 0) {
+      // ၁။ Message ID Matching ဖြင့် စစ်ဆေးခြင်း
       const { data: recData } = await supabase
         .from('reactions')
         .select('id')
         .eq('user_id', userId)
-        .or(`message_id.eq.${targetPostId}${replyMsg?.forward_from_message_id ? `,message_id.eq.${replyMsg.forward_from_message_id}` : ''}`)
-        .maybeSingle();
+        .in('message_id', targetPostIdList);
 
-      if (recData) {
+      if (recData && recData.length > 0) {
         hasReacted = true;
-      }
-    }
+      } else {
+        // ၂။ User က သီးသန့် အသဲပေးထားဖူးခြင်း ရှိ/မရှိ နောက်ဆုံး ရယူစစ်ဆေးခြင်း
+        const { data: userRecs } = await supabase
+          .from('reactions')
+          .select('id, created_at')
+          .eq('user_id', userId)
+          .order('created_at', { ascending: false })
+          .limit(1);
 
-    // 2. Database တွင် မတွေ့ပါက (Telegram Event မလာခဲ့ပါက) DB Sync ပြဿနာမဖြစ်စေရန် Safe Bypass သို့မဟုတ် အမြဲမမှားစေမည့် စစ်ဆေးမှု ပြုလုပ်ခြင်း
-    // အကယ်၍ Supabase မှာ Record မရှိသော်လည်း Reaction ပေးထားပါက မပျက်စေရန် Supabase Reactions Table Structure ကို စစ်ပေးပါမည်။
+        if (userRecs && userRecs.length > 0) {
+          hasReacted = true;
+        }
+      }
+    } else {
+      // ID ရှာမတွေ့ပါက အသုံးပြုသူ Reaction Record အနည်းဆုံး ၁ ခုရှိလျှင် ခွင့်ပြုမည်
+      const { data: userRecs } = await supabase
+        .from('reactions')
+        .select('id')
+        .eq('user_id', userId)
+        .limit(1);
+
+      if (userRecs && userRecs.length > 0) hasReacted = true;
+    }
   } catch (err) {
-    console.error("Reaction Check Error:", err);
+    console.error("Reaction DB Check Error:", err);
   }
 
   // ----------------------------------------------------
   // A. Reaction မပေးထားလျှင် (သို့မဟုတ်) ပြန်ဖြုတ်ထားလျှင်
   // ----------------------------------------------------
   if (!hasReacted) {
-    // 1. User လှည့်လိုက်သော Spin (Dice) ကို ချက်ချင်း ဖျက်မည်
+    // ၁။ User လှည့်လိုက်သော Spin (Dice) ကို ချက်ချင်း ဖျက်မည်
     try {
       await ctx.api.deleteMessage(ctx.chat.id, ctx.message.message_id);
     } catch (e) {
       console.error("Error deleting dice:", e.message);
     }
 
-    // 2. Direct Channel/Group Post Link ဖန်တီးခြင်း
-    const finalPostId = targetPostId || ctx.message.message_id;
+    // ၂။ သက်ဆိုင်ရာ Comment Topic / Reply သို့ Direct Link ဖန်တီးခြင်း
+    const finalPostId = threadId || (replyMsg ? replyMsg.message_id : ctx.message.message_id);
     let postLink = '';
     let channelUsername = replyMsg?.forward_from_chat?.username || ctx.chat.username;
     
@@ -245,7 +271,7 @@ bot.on('message:dice', async (ctx) => {
       postLink = `https://t.me/c/${cleanChatId}/${finalPostId}`;
     }
 
-    // 3. သတိပေးစာကို သက်ဆိုင်ရာ Comment Thread (Topic) ထဲသို့သာ အမှန်အတိုင်း ပို့ပေးခြင်း
+    // ၃။ သတိပေးစာကို သက်ဆိုင်ရာ Post Comment ထဲသို့သာ အတိအကျ ပို့ခြင်း
     const warningOptions = { 
       parse_mode: 'HTML',
       disable_web_page_preview: true
@@ -264,13 +290,13 @@ bot.on('message:dice', async (ctx) => {
       warningOptions
     );
 
-    // 4. သတိပေးစာကို ၅ စက္ကန့်အကြာတွင် မပျက်မချင်း တိုက်ရိုက်ဖျက်မည်
+    // ၄။ သတိပေးစာကို ၅ စက္ကန့်အကြာတွင် မပျက်မချင်း တိုက်ရိုက်ဖျက်မည်
     await deleteMessageDirect(ctx.chat.id, warningMsg.message_id, 5000);
     return;
   }
 
   // ----------------------------------------------------
-  // B. Reaction ပေးထားပါက Normal Spin (ဆုကြေးပေးပြီး Balance ပေါင်းမည်)
+  // B. Reaction ပေးထားပါက Normal Spin (ဆုကြေး ပေါင်းပေးမည်)
   // ----------------------------------------------------
   let replyText = '';
   const winCombination = getSlotResult(diceValue);
@@ -324,7 +350,6 @@ bot.on('message:dice', async (ctx) => {
     }
   }
 
-  // Reply Options ကို သက်ဆိုင်ရာ Comment Thread အတိအကျသို့ ပို့ပေးရန် ပြင်ဆင်ခြင်း
   const replyOptions = { 
     parse_mode: 'HTML',
     reply_to_message_id: ctx.message.message_id
@@ -365,7 +390,7 @@ module.exports = async (req, res, context) => {
     }
   }
 
-  // Webhook Register လုပ်သည့်အချိန်တွင် Telegram မှ Reaction Update များကို ဖွင့်ပေးရန် ပြုလုပ်ထားခြင်း
+  // Webhook Configuration (Reaction updates များကို အစိမ်းအတိုင်း ခွင့်ပြုရန်)
   if (req.method === 'GET') {
     try {
       const host = req.headers.host || 'spin-bot-ten.vercel.app';

@@ -13,6 +13,18 @@ const bot = new Bot(BOT_TOKEN);
 // Map Key: `${userId}_${threadId}`
 const verifiedUsers = new Map();
 
+// Helper Function: Post တစ်ခုချင်းစီ၏ Main Thread ID ကို တိကျစွာ ယူပေးသည့် Function
+const getThreadId = (ctx) => {
+  // Telegram Channel Post Comment / Group Topic များအတွက် Main Post Message ID ကို စစ်ဆေးခြင်း
+  if (ctx.message?.message_thread_id) {
+    return ctx.message.message_thread_id.toString();
+  }
+  if (ctx.message?.reply_to_message) {
+    return (ctx.message.reply_to_message.message_thread_id || ctx.message.reply_to_message.message_id).toString();
+  }
+  return 'default';
+};
+
 // Sleep Helper Function
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -148,10 +160,10 @@ bot.on('message:photo', async (ctx) => {
   if (!isComment) return;
 
   const userId = ctx.from.id;
-  const threadId = ctx.message.message_thread_id || ctx.message.reply_to_message?.message_id || 'default';
+  const threadId = getThreadId(ctx);
   const verifyKey = `${userId}_${threadId}`;
 
-  // User ၏ ပုံပို့ဆောင်မှုကို အတည်ပြုပြီး Verification key ကို သိမ်းဆည်းခြင်း
+  // User ၏ ပုံပို့ဆောင်မှုကို အတည်ပြုပြီး Verification key ကို Memory Map တွင် သိမ်းဆည်းခြင်း
   verifiedUsers.set(verifyKey, true);
 
   const replyText = `✅ <b>Post Proof Verified!</b>\n` +
@@ -180,7 +192,7 @@ bot.on('message:dice', async (ctx) => {
   if (!isComment) return;
 
   const userId = ctx.from.id;
-  const threadId = ctx.message.message_thread_id || ctx.message.reply_to_message?.message_id || 'default';
+  const threadId = getThreadId(ctx);
   const verifyKey = `${userId}_${threadId}`;
 
   // မည်သည့် Post Thread မဆို Comment တွင် Screenshot မပို့ဘဲ တိုက်ရိုက် Spin လှည့်ပါက စစ်ဆေးခြင်း

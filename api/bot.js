@@ -9,9 +9,6 @@ const BOT_TOKEN = process.env.BOT_TOKEN || '8566391789:AAHxMWzB5EERqVAHI7Uf7rQod
 const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 const bot = new Bot(BOT_TOKEN);
 
-// Store pending spins in memory (User ID -> Spin Details)
-const pendingSpins = new Map();
-
 // Sleep Helper Function
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -42,7 +39,7 @@ bot.catch((err) => {
 });
 
 // Helper Function to delete messages after delay
-const deleteMessageLater = (ctx, chatId, messageId, delay = 10000) => {
+const deleteMessageLater = (ctx, chatId, messageId, delay = 5000) => {
   const promise = (async () => {
     await sleep(delay);
     try {
@@ -69,6 +66,44 @@ const deleteMessageDirect = async (chatId, messageId, delay = 10000) => {
   }
 };
 
+// ==========================================
+// Reaction Event: Auto sync user reaction to Supabase DB
+// ==========================================
+bot.on('message_reaction', async (ctx) => {
+  try {
+    const reaction = ctx.messageReaction;
+    if (!reaction) return;
+
+    const userId = reaction.user?.id;
+    const chatId = reaction.chat.id;
+    const messageId = reaction.message_id;
+
+    if (!userId) return;
+
+    const newReactions = reaction.new_reaction || [];
+
+    // Save to DB if reaction added
+    if (newReactions.length > 0) {
+      await supabase.from('reactions').upsert({
+        user_id: userId,
+        chat_id: chatId,
+        message_id: messageId,
+        created_at: new Date().toISOString()
+      }, { onConflict: 'user_id,chat_id,message_id' });
+    } 
+    // Delete from DB if reaction removed
+    else {
+      await supabase.from('reactions')
+        .delete()
+        .eq('user_id', userId)
+        .eq('chat_id', chatId)
+        .eq('message_id', messageId);
+    }
+  } catch (err) {
+    console.error('Error handling message_reaction event:', err);
+  }
+});
+
 // 1. /start Command
 bot.command('start', async (ctx) => {
   const userId = ctx.from?.id;
@@ -84,36 +119,67 @@ bot.command('start', async (ctx) => {
   deleteMessageLater(ctx, ctx.chat.id, sent.message_id, 5000);
 });
 
-// 2. Admin Broadcast Command
+// 2. /spin Command
+bot.command('spin', async (ctx) => {
+  await ctx.replyWithDice('🎰');
+});
+
+// 3. Admin Broadcast Command
 bot.command('broadcast', async (ctx) => {
   const userId = ctx.from?.id;
-  if (userId !== 1793453606) return ctx.reply('❌ This command is restricted.');
+  
+  if (userId !== 1793453606) {
+    return ctx.reply('❌ This command is restricted.');
+  }
 
   const customMessage = ctx.match;
-  if (!customMessage) return ctx.reply('⚠️ Please provide a message.\n\n<b>Format:</b> <code>/broadcast your_message</code>', { parse_mode: 'HTML' });
+
+  if (!customMessage) {
+    return ctx.reply('⚠️ Please provide a message.\n\n<b>Format:</b> <code>/broadcast your_message</code>', { parse_mode: 'HTML' });
+  }
 
   try {
-    const { data: users } = await supabase.from('users').select('telegram_id');
-    if (!users || users.length === 0) return ctx.reply('❌ No users found in database.');
+    const { data: users, error } = await supabase
+      .from('users')
+      .select('telegram_id');
 
-    let successCount = 0, failCount = 0;
+    if (error || !users || users.length === 0) {
+      return ctx.reply('❌ No users found in database.');
+    }
+
+    const statusMsg = await ctx.reply(`🚀 Broadcasting to ${users.length} users...`);
+
+    let successCount = 0;
+    let failCount = 0;
+
     for (const user of users) {
       try {
-        await ctx.api.sendMessage(user.telegram_id, customMessage, { parse_mode: 'HTML' });
+        await ctx.api.sendMessage(user.telegram_id, customMessage, {
+          parse_mode: 'HTML',
+          disable_web_page_preview: false
+        });
         successCount++;
-        await sleep(50);
+        await sleep(50); 
       } catch (err) {
-        failCount++;
+        failCount++; 
       }
     }
-    await ctx.reply(`✅ <b>Broadcast Completed!</b>\n\nSuccessful: ${successCount}\nFailed: ${failCount}`, { parse_mode: 'HTML' });
+
+    await ctx.api.editMessageText(
+      ctx.chat.id, 
+      statusMsg.message_id, 
+      `✅ <b>Broadcast Completed!</b>\n\n📤 Successful: ${successCount}\n❌ Failed: ${failCount}`, 
+      { parse_mode: 'HTML' }
+    );
+
   } catch (err) {
-    console.error(err);
+    console.error("Broadcast Error:", err);
+    await ctx.reply('❌ Error sending broadcast.');
   }
 });
 
 // ==========================================
-// 3. Slot Machine Dice Handling (In specific comment thread)
+// 4. Slot Machine Dice Handling & Reaction Check
 // ==========================================
 bot.on('message:dice', async (ctx) => {
   if (!ctx.message.dice || ctx.message.dice.emoji !== '🎰') return;
@@ -130,75 +196,78 @@ bot.on('message:dice', async (ctx) => {
   const threadId = ctx.message.message_thread_id;
   const replyMsg = ctx.message.reply_to_message;
 
-  // Delete original dice message immediately
+  // ----------------------------------------------------
+  // Reaction DB Verification Check
+  // ----------------------------------------------------
+  let hasReacted = false;
+
   try {
-    await ctx.api.deleteMessage(ctx.chat.id, ctx.message.message_id);
-  } catch (e) {
-    console.error("Error deleting dice message:", e.message);
+    const { data: recData } = await supabase
+      .from('reactions')
+      .select('id')
+      .eq('user_id', userId)
+      .limit(1);
+
+    if (recData && recData.length > 0) {
+      hasReacted = true;
+    }
+  } catch (err) {
+    console.error("Reaction DB Check Error:", err);
   }
 
-  // Save pending spin details for this user
-  pendingSpins.set(userId, {
-    diceValue: diceValue,
-    timestamp: Date.now()
-  });
+  // ----------------------------------------------------
+  // A. IF USER HAS NOT REACTED (Deny Access)
+  // ----------------------------------------------------
+  if (!hasReacted) {
+    // Delete original dice message immediately
+    try {
+      await ctx.api.deleteMessage(ctx.chat.id, ctx.message.message_id);
+    } catch (e) {
+      console.error("Error deleting dice:", e.message);
+    }
 
-  const finalPostId = threadId || (replyMsg ? replyMsg.message_id : ctx.message.message_id);
-  let channelUsername = replyMsg?.forward_from_chat?.username || ctx.chat.username;
-  let postLink = channelUsername 
-    ? `https://t.me/${channelUsername}/${finalPostId}`
-    : `https://t.me/c/${ctx.chat.id.toString().replace('-100', '')}/${finalPostId}`;
+    const finalPostId = threadId || (replyMsg ? replyMsg.message_id : ctx.message.message_id);
+    let postLink = '';
+    
+    let channelUsername = replyMsg?.forward_from_chat?.username || ctx.chat.username;
+    if (channelUsername) {
+      postLink = `https://t.me/${channelUsername}/${finalPostId}`;
+    } else {
+      const cleanChatId = ctx.chat.id.toString().replace('-100', '');
+      postLink = `https://t.me/c/${cleanChatId}/${finalPostId}`;
+    }
 
-  // Build options to reply ONLY in the exact comment thread where user spun
-  const warningOptions = { 
-    parse_mode: 'HTML',
-    disable_web_page_preview: true
-  };
+    const warningOptions = { 
+      parse_mode: 'HTML',
+      disable_web_page_preview: true
+    };
 
-  if (threadId) {
-    warningOptions.message_thread_id = threadId;
+    if (threadId) {
+      warningOptions.message_thread_id = threadId;
+    }
+    if (replyMsg) {
+      warningOptions.reply_to_message_id = replyMsg.message_id;
+    }
+
+    // Send Warning Message in English in the exact comment thread
+    const warningMsg = await ctx.reply(
+      `⚠️ <b>Access Denied!</b>\n\n` +
+      `Hey ${displayName}, you must react (❤️ or 👍) to the post before spinning!\n\n` +
+      `👉 <a href="${postLink}">Click Here to React to Post</a>`,
+      warningOptions
+    );
+
+    // Auto-delete warning message after 10 seconds
+    await deleteMessageDirect(ctx.chat.id, warningMsg.message_id, 10000);
+    return;
   }
-  if (replyMsg) {
-    warningOptions.reply_to_message_id = replyMsg.message_id;
-  }
 
-  // Send English warning message in the specific comment thread
-  const warningMsg = await ctx.reply(
-    `📸 <b>Reaction & Photo Proof Required!</b>\n\n` +
-    `Hey ${displayName}, before spinning, you must react (❤️ or 👍) to the channel post and send a <b>Screenshot (Photo)</b> as a reply in this comment thread!\n\n` +
-    `👉 <a href="${postLink}">Click Here to View Post</a>\n\n` +
-    `<i>⚠️ Reply with your screenshot photo in this thread to claim your spin result!</i>`,
-    warningOptions
-  );
-
-  // Auto delete warning message after 10 seconds
-  deleteMessageDirect(ctx.chat.id, warningMsg.message_id, 10000);
-});
-
-// ==========================================
-// 4. Photo Proof Handling (In specific comment thread)
-// ==========================================
-bot.on('message:photo', async (ctx) => {
-  const isComment = ctx.message.reply_to_message || ctx.message.is_topic_message;
-  if (!isComment) return;
-
-  const userId = ctx.from.id;
-  const pending = pendingSpins.get(userId);
-
-  // Ignore if user has no active pending spin
-  if (!pending) return;
-
-  const diceValue = pending.diceValue;
-  pendingSpins.delete(userId); // Remove pending spin
-
-  const rawUsername = ctx.from.username || ctx.from.first_name || `ID: ${userId}`;
-  const displayName = ctx.from.username ? `@${ctx.from.username}` : rawUsername;
-  const threadId = ctx.message.message_thread_id;
-
-  // Calculate spin result
+  // ----------------------------------------------------
+  // B. IF USER HAS REACTED (Calculate & Award Balance)
+  // ----------------------------------------------------
+  let replyText = '';
   const winCombination = getSlotResult(diceValue);
   const reward = winCombination ? winCombination.reward : 0;
-  let replyText = '';
 
   try {
     let { data: user } = await supabase
@@ -208,7 +277,11 @@ bot.on('message:photo', async (ctx) => {
       .maybeSingle();
 
     let currentBalance = user && user.balance ? parseFloat(user.balance) : 0;
-    let newBalance = reward > 0 ? Math.round((currentBalance + reward) * 1000000) / 1000000 : currentBalance;
+    let newBalance = currentBalance;
+
+    if (reward > 0) {
+      newBalance = Math.round((currentBalance + reward) * 1000000) / 1000000;
+    }
 
     await supabase.from('users').upsert({
       telegram_id: userId,
@@ -222,28 +295,39 @@ bot.on('message:photo', async (ctx) => {
         `<blockquote><b>Balance = <code>${newBalance.toFixed(6)} 💎</code></b></blockquote>\n` +
         `<b>Mini Withdraw = 0.05 GRAM 💰 | Admin: @Rampage528 📢</b>`;
     } else {
-      replyText = `❌ <b>Better luck next time, ${displayName}!</b>\n` +
+      replyText = `❌ <b>Try again ${displayName}! Better luck next time.</b>\n` +
         `<blockquote><b>Balance = <code>${newBalance.toFixed(6)} 💎</code></b></blockquote>\n` +
         `<b>Mini Withdraw = 0.05 GRAM 💰 | Admin: @Rampage528 📢</b>`;
     }
   } catch (error) {
     console.error("Supabase Error:", error);
-    replyText = `❌ <b>Better luck next time, ${displayName}!</b>`;
+    try {
+      let { data: user } = await supabase
+        .from('users')
+        .select('balance')
+        .eq('telegram_id', userId)
+        .maybeSingle();
+      let currentBalance = user && user.balance ? parseFloat(user.balance) : 0;
+      replyText = `❌ <b>Try again ${displayName}! Better luck next time.</b>\n` +
+        `<blockquote><b>Balance = <code>${currentBalance.toFixed(6)} 💎</code></b></blockquote>\n` +
+        `<b>Mini Withdraw = 0.05 GRAM 💰 | Admin: @Rampage528 📢</b>`;
+    } catch (e) {
+      replyText = `❌ <b>Try again ${displayName}! Better luck next time.</b>\n` +
+        `<b>Mini Withdraw = 0.05 GRAM 💰 | Admin: @Rampage528 📢</b>`;
+    }
   }
 
-  // Reply with result in the specific comment thread
+  // Reply Result in the exact comment thread
   const replyOptions = { 
     parse_mode: 'HTML',
     reply_to_message_id: ctx.message.message_id
   };
-
+  
   if (threadId) {
     replyOptions.message_thread_id = threadId;
   }
 
   const sentMsg = await ctx.reply(replyText, replyOptions);
-
-  // Auto delete result message after 5 seconds
   deleteMessageLater(ctx, ctx.chat.id, sentMsg.message_id, 5000);
 });
 
@@ -280,9 +364,9 @@ module.exports = async (req, res, context) => {
       const webhookUrl = `https://${host}/api/index`; 
       
       await bot.api.setWebhook(webhookUrl, {
-        allowed_updates: ["message", "edited_message", "channel_post", "edited_channel_post"]
+        allowed_updates: ["message", "edited_message", "channel_post", "edited_channel_post", "message_reaction", "message_reaction_count"]
       });
-      return res.status(200).send('Webhook configured successfully!');
+      return res.status(200).send('Webhook configured successfully with reaction updates!');
     } catch (e) {
       return res.status(200).send('Status: Active!');
     }

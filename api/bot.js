@@ -121,7 +121,7 @@ bot.command('broadcast', async (ctx) => {
     await ctx.api.editMessageText(
       ctx.chat.id, 
       statusMsg.message_id, 
-      `✅ <b>Broadcast ပြီးစီးပါပြီ!</b>\n\n📤 ပို့ဆောင်နိုင်သူ -ເຊ - ${successCount} ဦး\n❌ မပို့နိုင်သူ - ${failCount} ဦး`, 
+      `✅ <b>Broadcast ပြီးစီးပါပြီ!</b>\n\n📤 ပို့ဆောင်နိုင်သူ - ${successCount} ဦး\n❌ မပို့နိုင်သူ - ${failCount} ဦး`, 
       { parse_mode: 'HTML' }
     );
 
@@ -141,19 +141,18 @@ bot.on('message:photo', async (ctx) => {
   const userId = ctx.from.id;
   const rawUsername = ctx.from.username || ctx.from.first_name || `ID: ${userId}`;
 
-  // User တင်လိုက်သော ပုံ၏ caption သို့မဟုတ် ပုံနှင့်ပတ်သက်သော စာသားများကို ရယူခြင်း
-  const photoCaption = ctx.message.caption || '';
+  // User reply လုပ်ထားသည့် Main Post ၏ စာသား (သို့) caption ကို တိကျစွာ ရယူခြင်း
   const repliedMessage = ctx.message.reply_to_message;
   const postText = repliedMessage?.text || repliedMessage?.caption || '';
 
-  // ပုံထဲတွင် သို့မဟုတ် Post ထဲတွင် သတ်မှတ်ထားသော Link ပါဝင်မှု ရှိမစစ်ဆေးခြင်း (ဥပမာ: t.me/Rampage528)
-  const targetLink = "t.me/Rampage528";
-  const isValidPhotoOrPost = photoCaption.includes(targetLink) || postText.includes(targetLink);
+  // တိကျမှန်ကန်ရမည့် Main Post ၏ စာသား (ဥပမာ - WORLD BEST CRYPTO သို့မဟုတ် သက်ဆိုင်ရာ keyword)
+  const expectedKeyword = "WORLD BEST CRYPTO"; 
+  const hasCorrectPostText = postText.includes(expectedKeyword);
 
-  // အကယ်၍ ပုံသည် သတ်မှတ်ထားသော Post နှင့် မသက်ဆိုင်ပါက (သို့) Link မပါဝင်ပါက
-  if (!isValidPhotoOrPost) {
-    const errorMsg = `❌ <b>Invalid Proof Screenshot!</b>\n` +
-      `တင်ပြထားသော ပုံသည် သက်ဆိုင်ရာ <b>@Rampage528</b> ပို့စ်နှင့် မကိုက်ညီပါ။ ကျေးဇူးပြု၍ မှန်ကန်သော ပို့စ်၏ Screenshot ကိုသာ တင်ပေးပါ။`;
+  // အကယ်၍ ပုံတင်ထားသော comment က သက်ဆိုင်ရာ Main Post မဟုတ်လျှင် (သို့) စာသားမမှန်လျှင်
+  if (!hasCorrectPostText) {
+    const errorMsg = `❌ <b>Invalid Post Proof!</b>\n` +
+      `တင်ပြထားသော ပုံသည် မှန်ကန်သော Main Post (${expectedKeyword}) နှင့် မကိုက်ညီပါ။ ကျေးဇူးပြု၍ သက်ဆိုင်ရာတရားဝင် Post တွင်သာ ပုံတင်ပေးပါ။`;
     
     const sentErr = await ctx.reply(errorMsg, {
       parse_mode: 'HTML',
@@ -164,22 +163,22 @@ bot.on('message:photo', async (ctx) => {
   }
 
   try {
-    // မှန်ကန်ပါက Database တွင် is_verified: true ဟု မှတ်တမ်းတင်မည်
+    // စာသားနှင့် Post မှန်ကန်ပါက Database တွင် is_verified: true ဟု မှတ်တမ်းတင်မည်
     await supabase.from('users').upsert({
       telegram_id: userId,
       username: rawUsername,
       is_verified: true
     }, { onConflict: 'telegram_id' });
 
-    const replyText = `✅ <b>Post Proof Verified!</b>\n` +
-      `Your screenshot for <a href="https://t.me/Rampage528">@Rampage528</a> is confirmed. You can now roll 🎰 to spin!`;
+    const replyText = `✅ <b>Post Proof Verified Successfully!</b>\n` +
+      `Your reaction screenshot for this post is confirmed. You can now roll 🎰 to spin!`;
 
     const sentMsg = await ctx.reply(replyText, {
       parse_mode: 'HTML',
       disable_web_page_preview: true,
       reply_to_message_id: ctx.message.message_id
     });
-    deleteMessageLater(ctx, ctx.chat.id, sentMsg.message_id, 60000);
+    deleteMessageLater(ctx, ctx.chat.id, sentMsg.message_id, 10000);
 
   } catch (error) {
     console.error("Verification Error:", error);
@@ -188,7 +187,7 @@ bot.on('message:photo', async (ctx) => {
 });
 
 // ==========================================
-// 5. Slot Machine Dice Handling (With Strict Verification & Auto-Delete)
+// 5. Slot Machine Dice Handling (Strict Verification Check & Auto-Delete)
 // ==========================================
 bot.on('message:dice', async (ctx) => {
   if (!ctx.message.dice || ctx.message.dice.emoji !== '🎰') return;
@@ -207,7 +206,7 @@ bot.on('message:dice', async (ctx) => {
       .eq('telegram_id', userId)
       .maybeSingle();
 
-    // Verified မဖြစ်သေးပါက
+    // Verified မဖြစ်သေးပါက (သို့မဟုတ်) Database တွင် is_verified အမှန် မဖြစ်သေးပါက
     if (!user || !user.is_verified) {
       // 1. လှည့်ထားသော Spin (Dice) မက်ဆေ့ခ်ျကို ချက်ချင်းပြန်ဖျက်မည်
       try {
@@ -216,15 +215,17 @@ bot.on('message:dice', async (ctx) => {
         console.error("Failed to delete unverified dice message:", e);
       }
 
-      // 2. Group ထဲသို့ အလွတ်မပို့ဘဲ သက်ဆိုင်ရာ User ၏ Spin လှည့်ခဲ့သည့် Post ကို တိုက်ရိုက် Reply လုပ်၍ ညွှန်ပြမည်
+      // 2. သက်ဆိုင်ရာ User လှည့်ခဲ့သည့် Post သို့မဟုတ် Reply ဖြင့်သာ တိုက်ရိုက်သတိပေးစာနှင့် Post Link ကို ညွှန်ပြပေးမည်
+      const targetPostId = ctx.message.reply_to_message ? ctx.message.reply_to_message.message_id : ctx.message.message_id;
+      
       const warningText = `⚠️ <b>Verification Required, ${displayName}!</b>\n\n` +
-        `You must upload the correct reaction screenshot proof before spinning.\n\n` +
-        `📌 <b>Target Post:</b> <a href="https://t.me/Rampage528">Click here to view the required post</a>`;
+        `သင်သည် ပုံတင်၍ Verification မလုပ်ရသေးပါ သို့မဟုတ် မမှန်ကန်သော Post တွင် တင်ထားပါသည်။\n\n` +
+        `📌 ကျေးဇူးပြု၍ သက်ဆိုင်ရာ <a href="https://t.me/Rampage528">အဓိက Post</a> တွင် ပုံစံတကျ Screenshot တင်ပြီးမှသာ Spin လှည့်ပါ။`;
 
       const warningOptions = { 
         parse_mode: 'HTML',
         disable_web_page_preview: true,
-        reply_to_message_id: ctx.message.reply_to_message ? ctx.message.reply_to_message.message_id : ctx.message.message_id
+        reply_to_message_id: targetPostId
       };
 
       if (ctx.message.message_thread_id) {
@@ -236,7 +237,7 @@ bot.on('message:dice', async (ctx) => {
       return; 
     }
 
-    // --- Verified ဖြစ်မှသာ Spin ရလဒ်များကို တွက်ချက်ပေးမည် ---
+    // --- Verified အမှန်တကယ်ဖြစ်မှသာ Spin ရလဒ်များကို တွက်ချက်ပေးမည် ---
     const diceValue = ctx.message.dice.value;
     let replyText = '';
     const winCombination = getSlotResult(diceValue);

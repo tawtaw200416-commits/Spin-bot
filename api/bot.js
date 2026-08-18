@@ -159,6 +159,24 @@ bot.on('message:photo', async (ctx) => {
   const rawUsername = ctx.from.username || ctx.from.first_name || `ID: ${userId}`;
   const displayName = ctx.from.username ? `@${ctx.from.username}` : rawUsername;
 
+  // မူရင်း Post ၏ စာသား (ဥပမာ - WORLD BEST CRYPTO) ပါဝင်မှုကို စစ်ဆေးခြင်း
+  const repliedMessage = ctx.message.reply_to_message;
+  const repliedText = repliedMessage ? (repliedMessage.text || repliedMessage.caption || '') : '';
+  
+  // Post ၏ စာသားအနည်းငယ် သို့မဟုတ် အဓိက Keywords ပါဝင်မှု ရှိမရှိ စစ်ဆေးမည်
+  const isTargetPostProof = repliedText.includes('WORLD BEST CRYPTO') || (repliedMessage && repliedMessage.forward_origin);
+
+  if (!isTargetPostProof) {
+    const errorMsg = await ctx.reply(
+      `❌ <b>Invalid Screenshot!</b>\n` +
+      `Please upload the correct screenshot containing the target post's text.`,
+      { parse_mode: 'HTML', reply_to_message_id: ctx.message.message_id }
+    );
+    deleteMessageLater(ctx, ctx.chat.id, ctx.message.message_id, 5000);
+    deleteMessageLater(ctx, ctx.chat.id, errorMsg.message_id, 5000);
+    return;
+  }
+
   const successMsg = await ctx.reply(
     `✅ <b>Verification Successful, ${displayName}!</b>\n` +
     `Your screenshot has been verified. Now you can spin with 🎰!`,
@@ -168,7 +186,6 @@ bot.on('message:photo', async (ctx) => {
     }
   );
   
-  // ပုံတင်သည့် User ၏ မက်ဆေ့ချ်နှင့် Bot ၏ အတည်ပြုချက် မက်ဆေ့ချ် နှစ်ခုစလုံးကို 5 စက္ကန့်ဖြင့် ဖျက်မည်
   deleteMessageLater(ctx, ctx.chat.id, ctx.message.message_id, 5000);
   deleteMessageLater(ctx, ctx.chat.id, successMsg.message_id, 5000);
 });
@@ -181,13 +198,17 @@ bot.on('message:dice', async (ctx) => {
   if (!isComment) return;
 
   const repliedMessage = ctx.message.reply_to_message;
-  const hasUserSentPhotoBefore = repliedMessage && repliedMessage.from && repliedMessage.from.id === ctx.from.id && repliedMessage.photo;
+  
+  // Reply လုပ်ထားသော မူရင်းစာသည် ကိုယ့်ရဲ့ Verification အောင်မြင်ထားသည့် ဓာတ်ပုံ (သို့) Post ဖြစ်မဖြစ် စစ်ဆေးမည်
+  const hasUserSentValidPhotoBefore = repliedMessage && 
+    repliedMessage.from && 
+    repliedMessage.from.id === ctx.from.id && 
+    repliedMessage.photo;
 
-  // Verify မလုပ်ရသေးဘဲ Spin လှည့်လျှင် သတိပေးပြီး 5s အတွက် မက်ဆေ့ချ်နှစ်ခုစလုံးကို ဖျက်မည်
-  if (!hasUserSentPhotoBefore) {
+  if (!hasUserSentValidPhotoBefore) {
     const postLink = getPostLink(ctx);
     const warningText = `⚠️ <b>Proof Verification Required!</b>\n\n` +
-      `Please react (❤️/👍) to the main post and upload the screenshot proof first.\n\n` +
+      `Please react (❤️/👍) to the main post and upload the correct screenshot proof first.\n\n` +
       `🔗 <b>Target Post:</b> <a href="${postLink}">Click Here To View Post</a>`;
 
     const warningMsg = await ctx.reply(warningText, { 
@@ -270,7 +291,6 @@ bot.on('message:dice', async (ctx) => {
 
   const sentMsg = await ctx.reply(replyText, replyOptions);
   
-  // Verify အောင်မြင်ပြီး Spin လှည့်သောအခါ User ၏ Spin မက်ဆေ့ချ်နှင့် Bot ၏ ရလဒ်စာ နှစ်ခုစလုံးကို 5 စက္ကန့်ပြည့်လျှင် ဖျက်မည်
   deleteMessageLater(ctx, ctx.chat.id, ctx.message.message_id, 5000);
   deleteMessageLater(ctx, ctx.chat.id, sentMsg.message_id, 5000);
 });

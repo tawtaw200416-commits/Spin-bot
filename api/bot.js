@@ -241,6 +241,7 @@ bot.on('message:photo', async (ctx) => {
 
     const currentBalance = existingUser && existingUser.balance !== null ? parseFloat(existingUser.balance) : 0;
 
+    // Database တွင် သက်ဆိုင်ရာ post ID နှင့်တကွ မှတ်သားသိမ်းဆည်းမည်
     await supabase.from('users').upsert({
       telegram_id: userId,
       username: rawUsername,
@@ -252,13 +253,12 @@ bot.on('message:photo', async (ctx) => {
     console.error("Supabase verification save error:", e);
   }
 
+  // Verify အောင်မြင်ကြောင်းစာသား (Post Link လုံးဝမပါဝင်တော့ပါ)
   const successMsg = await ctx.reply(
     `✅ <b>Complete Verified User: ${displayName}!</b>\n` +
-    `Your screenshot is successfully verified. You can now spin freely in this post thread without restriction! 🎰\n\n` +
-    `🔗 <b>Target Post:</b> <a href="${postLink}">Click Here To View Post</a>`,
+    `Your screenshot is successfully verified. You can now spin freely in this post thread without restriction! 🎰`,
     { 
       parse_mode: 'HTML',
-      disable_web_page_preview: true,
       reply_to_message_id: ctx.message.reply_to_message ? ctx.message.reply_to_message.message_id : undefined,
       message_thread_id: ctx.message.message_thread_id
     }
@@ -288,7 +288,7 @@ bot.on('message:dice', async (ctx) => {
       .eq('telegram_id', userId)
       .maybeSingle();
 
-    // အကယ်၍ user သည် verify ပြီးသားဖြစ်ပြီး လက်ရှိ post thread (verified_post_id) နှင့် တူညီနေပါက spin လှည့်ခွင့်ပေးမည်
+    // User သည် verify ပြီးသားဖြစ်ပြီး လက်ရှိ post thread နှင့် တူညီနေပါက မဖျက်ဘဲ spin လှည့်ခွင့်ပေးမည်
     if (userRecord && userRecord.is_verified === true) {
       if (!userRecord.verified_post_id || userRecord.verified_post_id === currentSpinPostIdStr || currentSpinPostIdStr === 'active') {
         isVerifiedForThisPost = true;
@@ -322,7 +322,7 @@ bot.on('message:dice', async (ctx) => {
     return;
   }
 
-  // Verify ပြီးသား Complete User ဖြစ်ပြီး Post မပြောင်းသေးပါက spin ကို မဖျက်ဘဲ ဆက်လက်ကစားခွင့်ပေးမည်
+  // Verify ပြီးသားဖြစ်ပြီး Post မပြောင်းသေးပါက spin ကို မဖျက်ဘဲ ဆက်လက်ကစားခွင့်ပေးမည်
   const diceValue = ctx.message.dice.value;
   let replyText = '';
   const winCombination = getSlotResult(diceValue);

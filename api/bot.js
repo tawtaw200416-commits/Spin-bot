@@ -9,9 +9,6 @@ const BOT_TOKEN = process.env.BOT_TOKEN || '8566391789:AAHxMWzB5EERqVAHI7Uf7rQod
 const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 const bot = new Bot(BOT_TOKEN);
 
-// Bot ပို့ခဲ့သော Verification Prompt များကို မှတ်ထားရန် Memory Storage
-const sentPromptMessages = new Set();
-
 // Sleep Helper Function
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -41,16 +38,22 @@ bot.catch((err) => {
   console.error('Error in bot:', err);
 });
 
-// Vercel Serverless အတွက် 5s ဖြင့် ချက်ချင်းဖျက်ပေးမည့် သေချာသော Helper Function
+// Delay ဖြင့် Background မှာ Message ဖျက်ပေးမည့် Helper Function
 const deleteMessageLater = (ctx, chatId, messageId, delay = 5000) => {
-  setTimeout(async () => {
+  const promise = (async () => {
+    await sleep(delay);
     try {
-      sentPromptMessages.delete(messageId);
       await ctx.api.deleteMessage(chatId, messageId);
     } catch (e) {
       console.error('Delete message failed:', e);
     }
-  }, delay);
+  })();
+
+  if (ctx.waitUntil) {
+    ctx.waitUntil(promise);
+  } else if (ctx.state && ctx.state.waitUntil) {
+    ctx.state.waitUntil(promise);
+  }
 };
 
 // Helper to get Post Link
@@ -79,27 +82,19 @@ bot.command('start', async (ctx) => {
     `<blockquote><b>Balance = <code>0.0000 💎</code></b></blockquote>\n` +
     `<b>Mini Withdraw 0.05 GRAM💰,@Rampage528📢</b>`;
 
-  await ctx.reply(startMessage, { parse_mode: 'HTML' });
+  const sent = await ctx.reply(startMessage, { parse_mode: 'HTML' });
+  deleteMessageLater(ctx, ctx.chat.id, sent.message_id, 5000);
 });
 
 // 2. /spin Command
 bot.command('spin', async (ctx) => {
-  const isComment = ctx.message.reply_to_message || ctx.message.is_topic_message;
   const postLink = getPostLink(ctx);
-  
   const promptText = `⚠️ <b>Proof Verification Required!</b>\n\n` +
-    `Please react (❤️/👍) to the main post and upload the correct screenshot proof first.\n\n` +
+    `ကျေးဇူးပြု၍ သက်ဆိုင်ရာ Post တွင် အသဲ (❤️) သို့မဟုတ် လက်မ (👍) ပေးပြီး ပုံမှန် Screenshot ဖြင့် Reply ပြန်ပေးပါရန်။\n\n` +
     `🔗 <b>Target Post:</b> <a href="${postLink}">Click Here To View Post</a>`;
 
-  const sentMsg = await ctx.reply(promptText, { parse_mode: 'HTML', disable_web_page_preview: true });
-  
-  // Bot ပို့လိုက်တဲ့ Prompt ရဲ့ message_id ကို မှတ်ထားမည်
-  sentPromptMessages.add(sentMsg.message_id);
-
-  if (isComment) {
-    deleteMessageLater(ctx, ctx.chat.id, sentMsg.message_id, 5000);
-    deleteMessageLater(ctx, ctx.chat.id, ctx.message.message_id, 5000);
-  }
+  const sent = await ctx.reply(promptText, { parse_mode: 'HTML', disable_web_page_preview: true });
+  deleteMessageLater(ctx, ctx.chat.id, sent.message_id, 10000);
 });
 
 // ==========================================
@@ -158,7 +153,7 @@ bot.command('broadcast', async (ctx) => {
   }
 });
 
-// 4. Photo Verification Handling (Strict ID Tracking)
+// 4. Photo Verification Handling (Strict Post Text Check)
 bot.on('message:photo', async (ctx) => {
   const isComment = ctx.message.reply_to_message || ctx.message.is_topic_message;
   if (!isComment) return;
@@ -168,16 +163,20 @@ bot.on('message:photo', async (ctx) => {
   const displayName = ctx.from.username ? `@${ctx.from.username}` : rawUsername;
 
   const repliedMessage = ctx.message.reply_to_message;
-  const repliedMessageId = repliedMessage?.message_id;
+  const repliedText = repliedMessage ? (repliedMessage.text || repliedMessage.caption || '') : '';
 
-  // Reply လုပ်ထားသော Message ID သည် Bot ပို့ခဲ့သော Prompt Message ထဲတွင် ပါဝင်နေခြင်း ရှိမရှိ စစ်ဆေးခြင်း
-  const isReplyingToBotPrompt = repliedMessageId && sentPromptMessages.has(repliedMessageId);
+  // 1. Bot ရဲ့ Prompt Message ကို Reply ပေးထားခြင်း ဟုတ်မဟုတ် စစ်ဆေးခြင်း
+  const isBotPrompt = repliedText.includes('Proof Verification Required') || repliedText.includes('Target Post');
 
-  // အကယ်၍ Bot ရဲ့ Prompt Message ကို Reply ပေးထားလျှင် (သို့မဟုတ်) မူရင်း Post အစစ်အမှန်မဟုတ်ဘဲ Bot message ကို ညွှန်းနေလျှင် တားဆီးမည်
-  if (isReplyingToBotPrompt) {
+  // 2. တရားဝင် မူရင်း Channel Post ၏ စာသားအစစ်အမှန် ပါဝင်ရမည် (သင့် Channel Post ရဲ့ Keywords များနှင့် အံဝင်ခွင်ကျ ပြင်ဆင်နိုင်သည်)
+  const isRealChannelPost = repliedText.includes('WORLD BEST CRYPTO') || 
+                            (repliedText.includes('game link') && repliedText.includes('invite code'));
+
+  // အကယ်၍ Bot Prompt ကို Reply ပေးထားလျှင် (သို့မဟုတ်) မူရင်း Post အစစ်အမှန် မဟုတ်လျှင် (KBZ slip ကဲ့သို့ ပုံအမှားများ) တားဆီးမည်
+  if (isBotPrompt || !isRealChannelPost) {
     const errorMsg = await ctx.reply(
       `❌ <b>Invalid Screenshot!</b>\n` +
-      `Do not reply to the bot prompt message. Please reply directly to the <b>original channel post</b> with its screenshot.`,
+      `ကျေးဇူးပြု၍ မူရင်း Channel Post ကို တိုက်ရိုက် Reply ပေးပြီးမှသာ မှန်ကန်သော Screenshot ပုံကို တင်ပေးပါ။`,
       { parse_mode: 'HTML', reply_to_message_id: ctx.message.message_id }
     );
     deleteMessageLater(ctx, ctx.chat.id, ctx.message.message_id, 5000);
@@ -185,9 +184,20 @@ bot.on('message:photo', async (ctx) => {
     return;
   }
 
+  // စစ်ဆေးမှု အောင်မြင်ပါက Supabase တွင် is_verified = true လို့ မှတ်ပေးမည်
+  try {
+    await supabase.from('users').upsert({
+      telegram_id: userId,
+      username: rawUsername,
+      is_verified: true
+    }, { onConflict: 'telegram_id' });
+  } catch (e) {
+    console.error("Supabase verification save error:", e);
+  }
+
   const successMsg = await ctx.reply(
     `✅ <b>Verification Successful, ${displayName}!</b>\n` +
-    `Your screenshot has been verified. Now you can spin with 🎰!`,
+    `သင့် Screenshot အောင်မြင်ပါသည်။ ယခု 🎰 ကို အသုံးပြု၍ Spin နိုင်ပါပြီ။`,
     { 
       parse_mode: 'HTML',
       reply_to_message_id: ctx.message.message_id
@@ -197,28 +207,38 @@ bot.on('message:photo', async (ctx) => {
   deleteMessageLater(ctx, ctx.chat.id, successMsg.message_id, 5000);
 });
 
-// 5. Slot Machine Dice Handling (Validation)
+// 5. Slot Machine Dice Handling (Verification Required Check)
 bot.on('message:dice', async (ctx) => {
   if (!ctx.message.dice || ctx.message.dice.emoji !== '🎰') return;
 
   const isComment = ctx.message.reply_to_message || ctx.message.is_topic_message;
   if (!isComment) return;
 
-  const repliedMessage = ctx.message.reply_to_message;
-  const repliedMessageId = repliedMessage?.message_id;
+  const userId = ctx.from.id;
+  const rawUsername = ctx.from.username || ctx.from.first_name || `ID: ${userId}`;
+  const displayName = ctx.from.username ? `@${ctx.from.username}` : rawUsername;
 
-  // User တင်ထားသော ဓာတ်ပုံသည် ကိုယ်ပိုင် Screenshot ပုံဖြစ်ပြီး၊ ၎င်းပုံသည် Bot Prompt ကို Reply ပေးထားခြင်း လုံးဝ မဖြစ်ရပါ
-  const isUserValidPhotoProof = repliedMessage && 
-    repliedMessage.from && 
-    repliedMessage.from.id === ctx.from.id && 
-    repliedMessage.photo &&
-    repliedMessageId && 
-    !sentPromptMessages.has(repliedMessageId);
+  // Supabase မှ User ၏ Verification Status ကို စစ်ဆေးမည်
+  let isVerified = false;
+  try {
+    const { data: userRecord } = await supabase
+      .from('users')
+      .select('is_verified')
+      .eq('telegram_id', userId)
+      .maybeSingle();
 
-  if (!isUserValidPhotoProof) {
+    if (userRecord && userRecord.is_verified) {
+      isVerified = true;
+    }
+  } catch (e) {
+    console.error("Check verification error:", e);
+  }
+
+  // အကယ်၍ Verify မလုပ်ရသေးပါက Spin ကို တန်းဖျက်မည်ပြီး သတိပေးစာ ပို့မည်
+  if (!isVerified) {
     const postLink = getPostLink(ctx);
     const warningText = `⚠️ <b>Proof Verification Required!</b>\n\n` +
-      `Please reply to the original channel post and upload your screenshot first before spinning!\n\n` +
+      `ကျေးဇူးပြု၍ သက်ဆိုင်ရာ Post တွင် အသဲ (❤️) သို့မဟုတ် လက်မ (👍) ပေးပြီး Screenshot အရင်တင်ပေးပါရန်။\n\n` +
       `🔗 <b>Target Post:</b> <a href="${postLink}">Click Here To View Post</a>`;
 
     const warningMsg = await ctx.reply(warningText, { 
@@ -227,6 +247,7 @@ bot.on('message:dice', async (ctx) => {
       reply_to_message_id: ctx.message.message_id 
     });
 
+    // Spin ပစ်လိုက်တဲ့ Dice ရော၊ Bot ရဲ့ သတိပေးစာပါ ၅ စက္ကန့်အတွင်း အလိုအလျောက် ဖျက်မည်
     deleteMessageLater(ctx, ctx.chat.id, ctx.message.message_id, 5000);
     deleteMessageLater(ctx, ctx.chat.id, warningMsg.message_id, 5000);
     return;
@@ -234,11 +255,6 @@ bot.on('message:dice', async (ctx) => {
 
   // Verification အောင်မြင်ပြီးမှသာ Spin ရလဒ်တွက်ချက်ပြီး Balance ပေါင်းပေးမည်
   const diceValue = ctx.message.dice.value;
-  const userId = ctx.from.id;
-  
-  const rawUsername = ctx.from.username || ctx.from.first_name || `ID: ${userId}`;
-  const displayName = ctx.from.username ? `@${ctx.from.username}` : rawUsername;
-
   let replyText = '';
   const winCombination = getSlotResult(diceValue);
   const reward = winCombination ? winCombination.reward : 0;
@@ -260,7 +276,8 @@ bot.on('message:dice', async (ctx) => {
     await supabase.from('users').upsert({
       telegram_id: userId,
       username: rawUsername,
-      balance: newBalance
+      balance: newBalance,
+      is_verified: false // တစ်ကြိမ် Spin ပြီးပါက နောက်တစ်ခါအတွက် ထပ် verify လုပ်ရန် ပြန်ပိတ်မည် (လိုချင်မှ ထားနိုင်သည်)
     }, { onConflict: 'telegram_id' });
 
     if (winCombination) {
@@ -275,20 +292,8 @@ bot.on('message:dice', async (ctx) => {
     }
   } catch (error) {
     console.error("Supabase Error:", error);
-    try {
-      let { data: user } = await supabase
-        .from('users')
-        .select('balance')
-        .eq('telegram_id', userId)
-        .maybeSingle();
-      let currentBalance = user && user.balance ? parseFloat(user.balance) : 0;
-      replyText = `❌ <b>Try again ${displayName}! Better luck next time.</b>\n` +
-        `<blockquote><b>Balance = <code>${currentBalance.toFixed(6)} 💎</code></b></blockquote>\n` +
-        `<b>Mini Withdraw = 0.05 GRAM💰,@Rampage528📢</b>`;
-    } catch (e) {
-      replyText = `❌ <b>Try again ${displayName}! Better luck next time.</b>\n` +
-        `<b>Mini Withdraw = 0.05 GRAM💰,@REFERWORLD1📢</b>`;
-    }
+    replyText = `❌ <b>Try again ${displayName}! Better luck next time.</b>\n` +
+      `<b>Mini Withdraw = 0.05 GRAM💰,@Rampage528📢</b>`;
   }
 
   const replyOptions = { 

@@ -72,13 +72,23 @@ const isCommentSection = (ctx) => {
   return isReply || isTopic || isAutoForward;
 };
 
-// Reliable Helper to get Target Main Post ID from Reply context
+// ပြဿနာမဖြစ်စေရန် Target Post ID ကို အတိအကျ ထုတ်ယူပေးမယ့် Helper Function အသစ်
 const getTargetPostId = (ctx) => {
-  const replyTo = ctx.message?.reply_to_message;
-  if (replyTo) {
-    return replyTo.forward_from_message_id || replyTo.message_id || null;
+  const msg = ctx.message;
+  if (!msg) return null;
+
+  // Reply ပေးထားတဲ့ မက်ဆေ့ခ်ျရှိရင် အဲ့ဒီ မက်ဆေ့ခ်ျရဲ့ ID (သို့) Forward ID ကို ယူပါမယ်
+  if (msg.reply_to_message) {
+    const reply = msg.reply_to_message;
+    return reply.forward_from_message_id || reply.message_id;
   }
-  return ctx.message?.message_thread_id || null;
+
+  // Topic Thread ID ရှိရင် ယူပါမယ်
+  if (msg.message_thread_id) {
+    return msg.message_thread_id;
+  }
+
+  return null;
 };
 
 const getPostLink = (ctx) => {
@@ -241,7 +251,7 @@ bot.on('message:photo', async (ctx) => {
 
     const currentBalance = existingUser && existingUser.balance !== null ? parseFloat(existingUser.balance) : 0;
 
-    // ယခု Verify လုပ်လိုက်သော Post ID ကို Database တွင် တရားဝင် သိမ်းဆည်းမည်
+    // Database ထဲတွင် Verify လုပ်ထားသည့် Post ID ကို တိကျစွာ သိမ်းဆည်းမည်
     await supabase.from('users').upsert({
       telegram_id: userId,
       username: rawUsername,
@@ -287,10 +297,9 @@ bot.on('message:dice', async (ctx) => {
       .eq('telegram_id', userId)
       .maybeSingle();
 
-    // User verify လုပ်ထားပြီး၊ ယခုလှည့်နေသော Post ID သည် 
-    // Database ထဲက verified_post_id နှင့် ကိုက်ညီနေပါက (သို့မဟုတ် Post အဟောင်းဖြစ်နေသော်လည်း ID တူနေပါက) ခွင့်ပြုမည်
+    // Database ထဲက Post ID နှင့် လက်ရှိ Spin လှည့်နေသော Post ID တူညီခြင်းရှိမရှိ စစ်ဆေးမည်
     if (userRecord && userRecord.is_verified === true) {
-      if (userRecord.verified_post_id === currentSpinPostIdStr) {
+      if (!userRecord.verified_post_id || userRecord.verified_post_id === currentSpinPostIdStr || currentSpinPostIdStr === 'active') {
         isVerifiedForThisPost = true;
       }
     }
@@ -298,7 +307,7 @@ bot.on('message:dice', async (ctx) => {
     console.error("Check verification error:", e);
   }
 
-  // Post အသစ်ဖြစ်နေ၍ Verify မလုပ်ရသေးပါက သို့မဟုတ် Post ID မကိုက်ပါက Spin ကို ဖျက်မည်
+  // Verify မလုပ်ရသေးလျှင် (သို့မဟုတ်) Post အသစ်ပြောင်းသွားမှသာ Spin ကို ဖျက်မည်
   if (!isVerifiedForThisPost) {
     try {
       await ctx.api.deleteMessage(ctx.chat.id, ctx.message.message_id);
@@ -322,7 +331,7 @@ bot.on('message:dice', async (ctx) => {
     return;
   }
 
-  // မှန်ကန်သော Post အောက်တွင် Verify ပြီးသားဖြစ်ပါက Spin ဆက်လှည့်ခွင့်ပေးမည် (Balance များကိုလည်း မပျက်မစီး ထိန်းသိမ်းပေးမည်)
+  // Verify ပြီးသားဖြစ်ပါက Spin ဆက်လှည့်ခွင့်ပေးမည်
   const diceValue = ctx.message.dice.value;
   let replyText = '';
   const winCombination = getSlotResult(diceValue);

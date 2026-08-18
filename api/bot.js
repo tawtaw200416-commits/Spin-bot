@@ -123,7 +123,7 @@ bot.command('spin', async (ctx) => {
 
   const postLink = getPostLink(ctx);
   const promptText = `⚠️ <b>Proof Verification Required!</b>\n\n` +
-    `Please send a screenshot with reaction (❤️ / 👍) given to the post and caption <code>WORLD BEST CRYPTO</code> by replying directly to that post!\n\n` +
+    `Please send a screenshot with reaction (❤️ / 👍) given to the post and caption <code>@Rampage528</code> by replying directly to that post!\n\n` +
     `🔗 <b>Target Post:</b> <a href="${postLink}">Click Here To View Post</a>`;
 
   const sent = await ctx.reply(promptText, { 
@@ -209,7 +209,7 @@ bot.on('message:photo', async (ctx) => {
   const postLink = getPostLink(ctx);
 
   const photoCaption = ctx.message.caption || '';
-  const isValidCaption = photoCaption.includes('WORLD BEST CRYPTO') || photoCaption.includes('game link');
+  const isValidCaption = photoCaption.includes('@Rampage528') || photoCaption.includes('game link');
 
   if (!isValidCaption) {
     try {
@@ -218,7 +218,7 @@ bot.on('message:photo', async (ctx) => {
 
     const errorMsg = await ctx.reply(
       `❌ <b>Invalid Verification!</b>\n` +
-      `Your screenshot was rejected because the caption is incorrect! Please include caption <code>WORLD BEST CRYPTO</code> and reaction (❤️ / 👍).\n\n` +
+      `Your screenshot was rejected because the caption is incorrect! Please include caption <code>@Rampage528</code> and reaction (❤️ / 👍).\n\n` +
       `🔗 <b>Target Post:</b> <a href="${postLink}">Click Here To View Post</a>`,
       { 
         parse_mode: 'HTML', 

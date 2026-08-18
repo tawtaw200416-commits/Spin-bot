@@ -38,7 +38,7 @@ bot.catch((err) => {
   console.error('Error in bot:', err);
 });
 
-// Delay ဖြင့် Background မှာ Message ဖျက်ပေးမည့် Helper Function
+// Delay ဖြင့် Background မှာ Message ဖျက်ပေးမည့် Helper Function (၅ စက္ကန့်ကြာပြီးမှ ဖျက်ရန်)
 const deleteMessageLater = (ctx, chatId, messageId, delay = 5000) => {
   const promise = (async () => {
     await sleep(delay);
@@ -121,7 +121,7 @@ bot.command('broadcast', async (ctx) => {
     await ctx.api.editMessageText(
       ctx.chat.id, 
       statusMsg.message_id, 
-      `✅ <b>Broadcast ပြီးစီးပါပြီ!</b>\n\n📤 ပို့ဆောင်နိုင်သူ - ${successCount} ဦး\n❌ မပို့နိုင်သူ - ${failCount} ဦး`, 
+      `✅ <b>Broadcast ပြီးစီးပါပြီ!</b>\n\n📤 ပို့ဆောင်နိုင်သူ - ${successCount} ဦးချင်း\n❌ မပို့နိုင်သူ - ${failCount} ဦး`, 
       { parse_mode: 'HTML' }
     );
 
@@ -163,8 +163,9 @@ bot.on('message:photo', async (ctx) => {
                                   lowerCaption.includes('ကျပ်') ||
                                   lowerCaption.includes('ငွေလွှဲ');
 
-  // အကယ်၍ Post စာသား မမှန်ကန်ပါက (သို့မဟုတ်) ငွေလွှဲစလစ်ဖြစ်နေပါက User ၏ ပုံကိုပါ ချက်ချင်းဖျက်မည်
+  // အကယ်၍ Post စာသား အပြည့်အစုံ မပါဝင်ပါက (သို့မဟုတ်) ငွေလွှဲစလစ်/မဆိုင်သောပုံဖြစ်နေပါက
   if (!hasCorrectPostText || isReceiptOrInvalidImage) {
+    // 1. User တင်လိုက်သော ပုံ (Photo Message) ကို ချက်ချင်းဖျက်မည်
     try {
       await ctx.api.deleteMessage(ctx.chat.id, ctx.message.message_id);
     } catch (e) {
@@ -174,13 +175,15 @@ bot.on('message:photo', async (ctx) => {
     const errorMsg = `❌ <b>Invalid Post Proof!</b>\n` +
       `The screenshot does not match the official post (${expectedKeyword}). Please upload a valid screenshot showing your reaction (❤️, 👍, or rec) on the correct post!`;
     
+    // 2. သတိပေးစာကို ပို့ပြီး ၅ စက္ကန့်ကြာမှ ပြန်ဖျက်မည်
     const sentErr = await ctx.reply(errorMsg, {
       parse_mode: 'HTML'
     });
-    deleteMessageLater(ctx, ctx.chat.id, sentErr.message_id, 8000);
+    deleteMessageLater(ctx, ctx.chat.id, sentErr.message_id, 5000);
     return;
   }
 
+  // စာသားများ အားလုံးမှန်ကန်ပါက Verified လုပ်ပေးမည်
   try {
     await supabase.from('users').upsert({
       telegram_id: userId,
@@ -196,7 +199,7 @@ bot.on('message:photo', async (ctx) => {
       disable_web_page_preview: true,
       reply_to_message_id: ctx.message.message_id
     });
-    deleteMessageLater(ctx, ctx.chat.id, sentMsg.message_id, 10000);
+    deleteMessageLater(ctx, ctx.chat.id, sentMsg.message_id, 5000);
 
   } catch (error) {
     console.error("Verification Error:", error);
@@ -257,7 +260,7 @@ bot.on('message:dice', async (ctx) => {
       }
 
       const sentWarning = await ctx.reply(warningText, warningOptions);
-      deleteMessageLater(ctx, ctx.chat.id, sentWarning.message_id, 10000);
+      deleteMessageLater(ctx, ctx.chat.id, sentWarning.message_id, 5000);
       return; 
     }
 

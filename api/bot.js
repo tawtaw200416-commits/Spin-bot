@@ -84,8 +84,14 @@ const getPostLink = (ctx) => {
   return `https://t.me/Rampage528`;
 };
 
-// 1. /start Command
+// 1. /start Command (Channel/Group comment check အပါအဝင်)
 bot.command('start', async (ctx) => {
+  const isComment = ctx.message?.reply_to_message || ctx.message?.is_topic_message;
+  if (!isComment) {
+    try { await ctx.api.deleteMessage(ctx.chat.id, ctx.message.message_id); } catch (e) {}
+    return;
+  }
+
   const userId = ctx.from?.id;
   const rawUsername = ctx.from?.username || ctx.from?.first_name || `ID: ${userId}`;
   const displayName = ctx.from?.username ? `@${ctx.from.username}` : rawUsername;
@@ -95,18 +101,33 @@ bot.command('start', async (ctx) => {
     `<blockquote><b>Balance = <code>0.0000 💎</code></b></blockquote>\n` +
     `<b>Mini Withdraw 0.05 GRAM💰,@Rampage528📢</b>`;
 
-  const sent = await ctx.reply(startMessage, { parse_mode: 'HTML' });
+  const sent = await ctx.reply(startMessage, { 
+    parse_mode: 'HTML',
+    reply_to_message_id: ctx.message.reply_to_message ? ctx.message.reply_to_message.message_id : undefined,
+    message_thread_id: ctx.message.message_thread_id
+  });
   deleteMessageLater(ctx, ctx.chat.id, sent.message_id, 5000);
 });
 
-// 2. /spin Command
+// 2. /spin Command (Channel/Group comment check အပါအဝင်)
 bot.command('spin', async (ctx) => {
+  const isComment = ctx.message?.reply_to_message || ctx.message?.is_topic_message;
+  if (!isComment) {
+    try { await ctx.api.deleteMessage(ctx.chat.id, ctx.message.message_id); } catch (e) {}
+    return;
+  }
+
   const postLink = getPostLink(ctx);
   const promptText = `⚠️ <b>Proof Verification Required!</b>\n\n` +
     `Please send a screenshot with reaction (❤️ / 👍) given to the post and caption <code>WORLD BEST CRYPTO</code> by replying directly to that post!\n\n` +
     `🔗 <b>Target Post:</b> <a href="${postLink}">Click Here To View Post</a>`;
 
-  const sent = await ctx.reply(promptText, { parse_mode: 'HTML', disable_web_page_preview: true });
+  const sent = await ctx.reply(promptText, { 
+    parse_mode: 'HTML', 
+    disable_web_page_preview: true,
+    reply_to_message_id: ctx.message.reply_to_message ? ctx.message.reply_to_message.message_id : undefined,
+    message_thread_id: ctx.message.message_thread_id
+  });
   deleteMessageLater(ctx, ctx.chat.id, sent.message_id, 5000);
 });
 
@@ -172,11 +193,10 @@ bot.command('broadcast', async (ctx) => {
   }
 });
 
-// 4. Photo Verification Handling (Stores verification status precisely per comment/post & deletes unverified photos instantly)
+// 4. Photo Verification Handling (Channel/Group comment ထဲမှာသာ လက်ခံပြီး၊ အပြင်ဆို ပုံတန်းဖျက်မည်)
 bot.on('message:photo', async (ctx) => {
   const isComment = ctx.message.reply_to_message || ctx.message.is_topic_message;
   
-  // အကယ်၍ comment ထဲမှာ မဟုတ်ဘဲ အပြင်မှာ ပို့ရင် ပုံကို တန်းဖျက်မယ်
   if (!isComment) {
     try { await ctx.api.deleteMessage(ctx.chat.id, ctx.message.message_id); } catch (e) {}
     return;
@@ -193,7 +213,6 @@ bot.on('message:photo', async (ctx) => {
   const isValidCaption = photoCaption.includes('WORLD BEST CRYPTO') || photoCaption.includes('game link');
 
   if (!isValidCaption) {
-    // Caption မမှန်ရင် ပုံကို တန်းဖျက်မယ်
     try { await ctx.api.deleteMessage(ctx.chat.id, ctx.message.message_id); } catch (e) {}
 
     const errorMsg = await ctx.reply(
@@ -218,7 +237,7 @@ bot.on('message:photo', async (ctx) => {
 
     const currentBalance = existingUser && existingUser.balance !== null ? parseFloat(existingUser.balance) : 0;
 
-    // Save user verification status along with the target post/comment identifier in Supabase database
+    // Database ထဲတွင် user ၏ verify အခြေအနေနှင့် reply thread/post ID ကို တိကျစွာ မှတ်သားသိမ်းဆည်းခြင်း
     await supabase.from('users').upsert({
       telegram_id: userId,
       username: rawUsername,
@@ -243,37 +262,18 @@ bot.on('message:photo', async (ctx) => {
   deleteMessageLater(ctx, ctx.chat.id, successMsg.message_id, 5000);
 });
 
-// 5. Slot Machine Dice Handling (Deletes unverified/wrong-post spin immediately & replies in that comment thread)
+// 5. Slot Machine Dice Handling (Channel/Group comment ထဲမှာသာ လက်ခံပြီး၊ Verify မဖြစ်သေးပါက spin တန်းဖျက်မည်)
 bot.on('message:dice', async (ctx) => {
   if (!ctx.message.dice || ctx.message.dice.emoji !== '🎰') return;
 
   const isComment = ctx.message.reply_to_message || ctx.message.is_topic_message;
   
-  const replyOptions = { 
-    parse_mode: 'HTML',
-    reply_to_message_id: ctx.message.reply_to_message ? ctx.message.reply_to_message.message_id : undefined
-  };
-  
-  if (ctx.message.message_thread_id) {
-    replyOptions.message_thread_id = ctx.message.message_thread_id;
-  }
-
-  // Comment အပြင်ဘက်မှာ spin ပစ်ရင် Spin ကို တန်းဖျက်မယ်
   if (!isComment) {
     try {
       await ctx.api.deleteMessage(ctx.chat.id, ctx.message.message_id);
     } catch (e) {
       console.error("Failed to delete main chat spin message:", e);
     }
-
-    const postLink = getPostLink(ctx);
-    const warningMsg = await ctx.reply(
-      `⚠️ <b>Proof Verification Required!</b>\n\n` +
-      `Please send a screenshot with reaction (❤️ / 👍) given to the post and caption <code>WORLD BEST CRYPTO</code> by replying directly inside the target post's comment section to spin!\n\n` +
-      `🔗 <b>Target Post:</b> <a href="${postLink}">Click Here To View Post</a>`,
-      { parse_mode: 'HTML', disable_web_page_preview: true }
-    );
-    deleteMessageLater(ctx, ctx.chat.id, warningMsg.message_id, 5000);
     return;
   }
 
@@ -284,7 +284,6 @@ bot.on('message:dice', async (ctx) => {
   const currentSpinPostId = getTargetPostId(ctx);
   const currentSpinPostIdStr = currentSpinPostId ? currentSpinPostId.toString() : 'active';
 
-  // Check user verification status from Supabase database
   let isVerifiedForThisPost = false;
   try {
     const { data: userRecord } = await supabase
@@ -302,7 +301,7 @@ bot.on('message:dice', async (ctx) => {
     console.error("Check verification error:", e);
   }
 
-  // If user has not verified or verification doesn't match this comment/post, delete spin immediately
+  // Verify မဖြစ်သေးပါက Spin ကို တန်းဖျက်ပြီး သတိပေးချက်ပို့မည်
   if (!isVerifiedForThisPost) {
     try {
       await ctx.api.deleteMessage(ctx.chat.id, ctx.message.message_id);
@@ -326,7 +325,7 @@ bot.on('message:dice', async (ctx) => {
     return;
   }
 
-  // Process the spin successfully since user is fully verified and stored in database for this specific comment/post
+  // ခြွင်းချက်မရှိ အောင်မြင်စွာ Verify ပြီးသားဖြစ်ပါက Spin လှည့်ခွင့်ပေးပြီး ရလဒ်တွက်ချက်မည်
   const diceValue = ctx.message.dice.value;
   let replyText = '';
   const winCombination = getSlotResult(diceValue);
@@ -370,7 +369,11 @@ bot.on('message:dice', async (ctx) => {
       `<b>Mini Withdraw = 0.05 GRAM💰,@Rampage528📢</b>`;
   }
 
-  const sentMsg = await ctx.reply(replyText, replyOptions);
+  const sentMsg = await ctx.reply(replyText, { 
+    parse_mode: 'HTML',
+    reply_to_message_id: ctx.message.reply_to_message ? ctx.message.reply_to_message.message_id : undefined,
+    message_thread_id: ctx.message.message_thread_id
+  });
   deleteMessageLater(ctx, ctx.chat.id, sentMsg.message_id, 5000);
 });
 

@@ -1,5 +1,6 @@
 const { Bot, webhookCallback } = require('grammy');
 const { createClient } = require('@supabase/supabase-js');
+const vision = require('@google-cloud/vision');
 
 // Supabase Configuration
 const SUPABASE_URL = process.env.SUPABASE_URL || 'https://bncbaexhrofqslsfovow.supabase.co';
@@ -8,6 +9,9 @@ const BOT_TOKEN = process.env.BOT_TOKEN || '8566391789:AAHxMWzB5EERqVAHI7Uf7rQod
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 const bot = new Bot(BOT_TOKEN);
+
+// Google Cloud Vision OCR Client (ပုံထဲမှ စာသားနှင့် Emojis စစ်ရန်)
+const visionClient = new vision.ImageAnnotatorClient();
 
 // Serverless Memory cache
 const verifiedUsers = new Map();
@@ -186,17 +190,16 @@ bot.command('broadcast', async (ctx) => {
 });
 
 // ==========================================
-// 4. Post Comment Photo Verification Handling
+// 4. Post Comment Photo Verification + OCR Text/Reaction Verification
 // ==========================================
 bot.on('message:photo', async (ctx) => {
   const isComment = ctx.message.reply_to_message || ctx.message.is_topic_message;
   const threadId = getThreadId(ctx);
 
-  // မဆိုင်သည့် ပုံများ သို့မဟုတ် Direct Reply မဟုတ်သည့် ပုံများကို စစ်ဆေး၍ ပြန်လည် ပို့ခိုင်းခြင်း
+  // ၁။ Post Thread/Comment မဟုတ်ပါက ပယ်ဖျက်ခြင်း
   if (!isComment || !threadId) {
     const sentErr = await ctx.reply(
-      `❌ <b>Invalid Proof Photo!</b>\n\n` +
-      `ကျေးဇူးပြု၍ သက်ဆိုင်ရာ Main Post အောက်တွင် Reaction (❤️/👍) ပေးထားသော Screenshot ပုံကိုသာ Reply ပြုလုပ်၍ ပြန်လည်ပို့ပေးပါ။`,
+      `❌ <b>Invalid Proof Photo!</b>\n\nPlease reply with the screenshot directly inside the target post comment section.`,
       { parse_mode: 'HTML', reply_to_message_id: ctx.message.message_id }
     );
     deleteMessageLater(ctx, ctx.chat.id, sentErr.message_id, 5000);
@@ -204,25 +207,60 @@ bot.on('message:photo', async (ctx) => {
     return;
   }
 
-  const userId = ctx.from.id;
+  try {
+    // ၂။ ပို့လိုက်သည့် Photo ၏ URL ရယူခြင်း
+    const file = await ctx.getFile();
+    const photoUrl = `https://api.telegram.org/file/bot${BOT_TOKEN}/${file.file_path}`;
 
-  // Verification အောင်မြင်ကြောင်း မှတ်သားခြင်း
-  await saveVerification(userId, threadId);
+    // ၃။ Google Cloud Vision API ဖြင့် ပုံထဲမှ Text ကို ဖတ်ခြင်း
+    const [ocrResult] = await visionClient.textDetection(photoUrl);
+    const textAnnotations = ocrResult.textAnnotations;
+    const extractedText = textAnnotations && textAnnotations[0] ? textAnnotations[0].description : '';
 
-  const replyText = `✅ <b>Post Proof Verified!</b>\n` +
-    `Your reaction screenshot for this post is confirmed. You can now roll 🎰 to spin!`;
+    // ၄။ သက်ဆိုင်ရာ Main Post ပါ စာသားများ ပါမပါ စစ်ဆေးခြင်း (Keywords)
+    const requiredKeywords = ["Bot", "prepared", "Discussion", "Comments", "August"];
+    const hasPostContent = requiredKeywords.some(kw => extractedText.toLowerCase().includes(kw.toLowerCase()));
 
-  const replyOptions = { 
-    parse_mode: 'HTML',
-    reply_to_message_id: ctx.message.message_id
-  };
-  
-  if (ctx.message.message_thread_id) {
-    replyOptions.message_thread_id = ctx.message.message_thread_id;
+    // ၅။ ပုံထဲတွင် တကယ် Reaction (❤️/👍) ပါမပါ သို့မဟုတ် စာသားမကိုင်ညီပါက ငြင်းပယ်ခြင်း
+    if (!hasPostContent) {
+      const sentErr = await ctx.reply(
+        `❌ <b>မဆိုင်သော သို့မဟုတ် ပုံအတု ဖြစ်နေပါသည်။</b>\n\n` +
+        `ကျေးဇူးပြု၍ Target Post တွင် Reaction (❤️/👍) ပေးထားသော <b>တကယ့် Screenshot ပုံစစ်စစ်</b> ကိုသာ ပြန်လည် ပို့ပေးပါ။`,
+        { parse_mode: 'HTML', reply_to_message_id: ctx.message.message_id }
+      );
+      deleteMessageLater(ctx, ctx.chat.id, sentErr.message_id, 5000);
+      deleteMessageLater(ctx, ctx.chat.id, ctx.message.message_id, 5000);
+      return;
+    }
+
+    // ၆။ စစ်ဆေးမှု အောင်မြင်ပါက Verification ကို Memory + Database တွင် သိမ်းခြင်း
+    const userId = ctx.from.id;
+    await saveVerification(userId, threadId);
+
+    const replyText = `✅ <b>Post Proof Verified!</b>\n` +
+      `Your reaction screenshot for this post is confirmed. You can now roll 🎰 to spin!`;
+
+    const replyOptions = { 
+      parse_mode: 'HTML',
+      reply_to_message_id: ctx.message.message_id
+    };
+    
+    if (ctx.message.message_thread_id) {
+      replyOptions.message_thread_id = ctx.message.message_thread_id;
+    }
+
+    const sent = await ctx.reply(replyText, replyOptions);
+    deleteMessageLater(ctx, ctx.chat.id, sent.message_id, 5000);
+
+  } catch (err) {
+    console.error("OCR Check Error:", err);
+    const sentErr = await ctx.reply(
+      `❌ <b>Screenshot စစ်ဆေးရယူ၍ မရပါ။</b>\n\nကျေးဇူးပြု၍ တကယ့် Post Screenshot အမှန်ကို ပြန်လည်ပို့ပေးပါ။`,
+      { parse_mode: 'HTML', reply_to_message_id: ctx.message.message_id }
+    );
+    deleteMessageLater(ctx, ctx.chat.id, sentErr.message_id, 5000);
+    deleteMessageLater(ctx, ctx.chat.id, ctx.message.message_id, 5000);
   }
-
-  const sent = await ctx.reply(replyText, replyOptions);
-  deleteMessageLater(ctx, ctx.chat.id, sent.message_id, 5000);
 });
 
 // ==========================================
@@ -235,7 +273,7 @@ bot.on('message:dice', async (ctx) => {
   const threadId = getThreadId(ctx);
   const userId = ctx.from.id;
 
-  // Verification ရှိမရှိ စစ်ဆေးခြင်း
+  // သက်ဆိုင်ရာ Post Thread အောက် မဟုတ်ပါက သို့မဟုတ် Verification မရှိသေးပါက စစ်ဆေးခြင်း
   const verified = threadId ? await isUserVerified(userId, threadId) : false;
 
   if (!isComment || !threadId || !verified) {

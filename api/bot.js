@@ -160,16 +160,14 @@ bot.on('message:photo', async (ctx) => {
   const rawUsername = ctx.from.username || ctx.from.first_name || `ID: ${userId}`;
   const displayName = ctx.from.username ? `@${ctx.from.username}` : rawUsername;
 
-  // ဓာတ်ပုံနှင့်အတူ ပါလာသော စာသား (Caption) ကို တိုက်ရိုက်စစ်ဆေးမည်
+  // Check photo caption
   const photoCaption = ctx.message.caption || '';
-
-  // User တင်လိုက်တဲ့ ပုံမှာ သတ်မှတ်ထားသော စာသား အစစ်အမှန် (ဥပမာ - WORLD BEST CRYPTO) Caption ပါမှသာ လက်ခံမည်
   const isValidCaption = photoCaption.includes('WORLD BEST CRYPTO') || photoCaption.includes('game link');
 
   if (!isValidCaption) {
     const errorMsg = await ctx.reply(
       `❌ <b>Invalid Verification!</b>\n` +
-      `ကျေးဇူးပြု၍ ပုံတင်သည့်အခါ Caption တွင် <code>WORLD BEST CRYPTO</code> ဆိုသည့် စာသားကို တိကျစွာ ရေးထည့်ပြီးမှ ပို့ပေးပါ။`,
+      `Please send your screenshot with the exact caption <code>WORLD BEST CRYPTO</code> to verify.`,
       { parse_mode: 'HTML', reply_to_message_id: ctx.message.message_id }
     );
     deleteMessageLater(ctx, ctx.chat.id, ctx.message.message_id, 5000);
@@ -177,7 +175,7 @@ bot.on('message:photo', async (ctx) => {
     return;
   }
 
-  // အကယ်၍ Caption မှန်ကန်ပါက Supabase တွင် is_verified = true လို့ မှတ်မည်
+  // Save verification status to Supabase (remains verified for unlimited spins on this post)
   try {
     await supabase.from('users').upsert({
       telegram_id: userId,
@@ -190,7 +188,7 @@ bot.on('message:photo', async (ctx) => {
 
   const successMsg = await ctx.reply(
     `✅ <b>Verification Successful, ${displayName}!</b>\n` +
-    `Your screenshot is verified. You can now use the 🎰 spin!`,
+    `Your screenshot is verified. You can now use unlimited 🎰 spins on this post!`,
     { 
       parse_mode: 'HTML',
       reply_to_message_id: ctx.message.message_id
@@ -227,25 +225,29 @@ bot.on('message:dice', async (ctx) => {
     console.error("Check verification error:", e);
   }
 
-  // If not verified, delete spin and send warning
+  // If not verified, instantly delete the unverified spin dice message and send warning
   if (!isVerified) {
+    try {
+      await ctx.api.deleteMessage(ctx.chat.id, ctx.message.message_id);
+    } catch (e) {
+      console.error("Failed to delete unverified spin message:", e);
+    }
+
     const postLink = getPostLink(ctx);
     const warningText = `⚠️ <b>Proof Verification Required!</b>\n\n` +
-      `Please send your screenshot with caption <code>WORLD BEST CRYPTO</code> first!\n\n` +
+      `Your spin was deleted because you are not verified! Please send your screenshot with caption <code>WORLD BEST CRYPTO</code> first!\n\n` +
       `🔗 <b>Target Post:</b> <a href="${postLink}">Click Here To View Post</a>`;
 
     const warningMsg = await ctx.reply(warningText, { 
       parse_mode: 'HTML', 
-      disable_web_page_preview: true,
-      reply_to_message_id: ctx.message.message_id 
+      disable_web_page_preview: true
     });
 
-    deleteMessageLater(ctx, ctx.chat.id, ctx.message.message_id, 5000);
-    deleteMessageLater(ctx, ctx.chat.id, warningMsg.message_id, 5000);
+    deleteMessageLater(ctx, ctx.chat.id, warningMsg.message_id, 7000);
     return;
   }
 
-  // If verified, process spin results
+  // If verified, process spin results (unlimited spins allowed since is_verified is NOT reset)
   const diceValue = ctx.message.dice.value;
   let replyText = '';
   const winCombination = getSlotResult(diceValue);
@@ -269,7 +271,7 @@ bot.on('message:dice', async (ctx) => {
       telegram_id: userId,
       username: rawUsername,
       balance: newBalance,
-      is_verified: false // Reset verification after spin
+      is_verified: true // Keeps status verified for unlimited spins
     }, { onConflict: 'telegram_id' });
 
     if (winCombination) {

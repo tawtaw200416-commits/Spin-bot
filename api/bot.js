@@ -141,22 +141,22 @@ bot.on('message:photo', async (ctx) => {
   const userId = ctx.from.id;
   const rawUsername = ctx.from.username || ctx.from.first_name || `ID: ${userId}`;
 
-  // Telegram Discussion Group များတွင် Origin Post ကို တိကျစွာဖမ်းရန် 
-  // message_thread_id (သို့မဟုတ်) reply_to_message ၏ forward/origin များကိုပါ ရှာဖွေစစ်ဆေးခြင်း
-  let repliedMessage = ctx.message.reply_to_message;
-  let postText = repliedMessage?.text || repliedMessage?.caption || '';
+  const repliedMessage = ctx.message.reply_to_message;
+  
+  // Telegram တွင် reply လုပ်ထားသော မက်ဆေ့ခ်ျ၏ text, caption အပြင် quote များကိုပါ ရှာဖွေနိုင်ရန် ပေါင်းစပ်စစ်ဆေးခြင်း
+  const postText = repliedMessage?.text || repliedMessage?.caption || '';
+  const quoteText = repliedMessage?.quote?.text || '';
+  const messageCaption = ctx.message.caption || '';
 
-  // တခါတရံ reply လုပ်ထားသော message ထက် အဓိက Channel Post က message_thread_id (Topic/Root) ဖြစ်နေတတ်သည်
-  // သို့မဟုတ် ၎င်း၏ text ထဲတွင် keyword ရှာမတွေ့ပါက ctx.chat ผ่าน forward_from_chat စသည်တို့ကိုလည်း စစ်ဆေးနိုင်သည်
   const expectedKeyword = "WORLD BEST CRYPTO";
   
-  // အကယ်၍ ပထမအဆင့်မှာ စာသားမတွေ့ပါက reply_to_message မှတစ်ဆင့် Forward ထားသော မူရင်းစာသားများကိုပါ ဆက်လက်စစ်ဆေးမည်
-  if (!postText.includes(expectedKeyword) && repliedMessage?.forward_origin) {
-    // Forward info ရှိလျှင် ထပ်မံစစ်ဆေးရန်
-  }
+  // Reply လုပ်ထားသော စာသား (သို့) Quote ထဲတွင်ဖြစ်စေ၊ ပုံနှင့်အတူပါလာသော Caption ထဲတွင်ဖြစ်စေ သတ်မှတ်စာသား ပါဝင်ခြင်းရှိမစစ်ဆေးရန်
+  const hasCorrectText = postText.includes(expectedKeyword) || 
+                         quoteText.includes(expectedKeyword) || 
+                         messageCaption.includes(expectedKeyword);
 
-  // အဓိက Post ၏ စာသားတွင် keyword မပါဝင်ပါက (သို့မဟုတ် မမှန်ကန်ပါက)
-  if (!postText.includes(expectedKeyword)) {
+  // အကယ်၍ မည်သည့်နေရာတွင်မှ သတ်မှတ်စာသား မပါဝင်ပါက
+  if (!hasCorrectText) {
     const errorMsg = `❌ <b>Invalid Post Proof!</b>\n` +
       `The screenshot does not match the official post (${expectedKeyword}). Please upload the correct reaction proof on the valid post!`;
     
@@ -169,6 +169,7 @@ bot.on('message:photo', async (ctx) => {
   }
 
   try {
+    // စာသားနှင့် Post အမှန်ကန်ဆုံးဖြစ်မှသာ Database တွင် is_verified: true ဟု မှတ်တမ်းတင်မည်
     await supabase.from('users').upsert({
       telegram_id: userId,
       username: rawUsername,
@@ -220,14 +221,13 @@ bot.on('message:dice', async (ctx) => {
         console.error("Failed to delete unverified dice message:", e);
       }
 
-      // 2. သက်ဆိုင်ရာ Post ၏ Direct Link ကို တည်ဆောက်ခြင်း (Group Chat ID နှင့် Message ID ကိုသုံး၍ Link ဖန်တီးခြင်း)
+      // 2. သက်ဆိုင်ရာ Post ၏ Direct Link ကို တည်ဆောက်ခြင်း
       let chatIdStr = String(ctx.chat.id);
       if (chatIdStr.startsWith('-100')) {
-        chatIdStr = chatIdStr.substring(4); // -100 ကို ဖြုတ်ပြီး တိကျသော ID ယူခြင်း
+        chatIdStr = chatIdStr.substring(4); 
       }
       
       const targetMessageId = ctx.message.reply_to_message ? ctx.message.reply_to_message.message_id : ctx.message.message_thread_id;
-      // Telegram Group Post Link ပုံစံ - https://t.me/c/CHAT_ID/MESSAGE_ID
       const postLink = targetMessageId ? `https://t.me/c/${chatIdStr}/${targetMessageId}` : `https://t.me/Rampage528`;
 
       const warningText = `⚠️ <b>Verification Required, ${displayName}!</b>\n\n` +

@@ -38,7 +38,7 @@ bot.catch((err) => {
   console.error('Error in bot:', err);
 });
 
-// Helper Function to Delete Message Later
+// Helper Function to Delete Message Later (Guaranteed deletion within 5 seconds for all bot messages)
 const deleteMessageLater = (ctx, chatId, messageId, delay = 5000) => {
   const promise = (async () => {
     await sleep(delay);
@@ -172,11 +172,11 @@ bot.command('broadcast', async (ctx) => {
   }
 });
 
-// 4. Photo Verification Handling (Saves verification status for the specific post)
+// 4. Photo Verification Handling (Stores verification status for the specific post & deletes unverified photos)
 bot.on('message:photo', async (ctx) => {
   const isComment = ctx.message.reply_to_message || ctx.message.is_topic_message;
   
-  // အကယ်၍ comment အပြင်ဘက်မှာ ပို့ရင် ပုံကို တန်းဖျတ်မယ်
+  // အကယ်၍ comment အပြင်ဘက်မှာ ပို့ရင် (သို့မဟုတ်) verify မဖြစ်ရင် ပုံကို တန်းဖျက်မယ်
   if (!isComment) {
     try { await ctx.api.deleteMessage(ctx.chat.id, ctx.message.message_id); } catch (e) {}
     return;
@@ -192,9 +192,10 @@ bot.on('message:photo', async (ctx) => {
   const photoCaption = ctx.message.caption || '';
   const isValidCaption = photoCaption.includes('WORLD BEST CRYPTO') || photoCaption.includes('game link');
 
-  // Caption မှားရင် ပုံကို တန်းဖျက်မယ်
   if (!isValidCaption) {
+    // Caption မမှန်ရင် ပုံကို တန်းဖျက်မယ်
     try { await ctx.api.deleteMessage(ctx.chat.id, ctx.message.message_id); } catch (e) {}
+
     const errorMsg = await ctx.reply(
       `❌ <b>Invalid Verification!</b>\n` +
       `Your screenshot was rejected because the caption is incorrect! Please include caption <code>WORLD BEST CRYPTO</code> and reaction (❤️ / 👍).`,
@@ -213,7 +214,7 @@ bot.on('message:photo', async (ctx) => {
 
     const currentBalance = existingUser && existingUser.balance !== null ? parseFloat(existingUser.balance) : 0;
 
-    // Supabase ထဲမှာ ဤ User အတွက် Post ID နှင့်အတူ Verified လုပ်ပြီးကြောင်း သိမ်းဆည်းမည်
+    // Save user verification status along with the exact target post identifier
     await supabase.from('users').upsert({
       telegram_id: userId,
       username: rawUsername,
@@ -227,7 +228,7 @@ bot.on('message:photo', async (ctx) => {
 
   const successMsg = await ctx.reply(
     `✅ <b>Verification Successful, ${displayName}!</b>\n` +
-    `Your screenshot is verified. You can now spin freely here!`,
+    `Your screenshot is verified for this post. You can now spin freely here!`,
     { 
       parse_mode: 'HTML',
       reply_to_message_id: ctx.message.message_id
@@ -237,7 +238,7 @@ bot.on('message:photo', async (ctx) => {
   deleteMessageLater(ctx, ctx.chat.id, successMsg.message_id, 5000);
 });
 
-// 5. Slot Machine Dice Handling (Checks DB verification for the exact post)
+// 5. Slot Machine Dice Handling (Deletes spin if unverified or wrong post, permits if verified)
 bot.on('message:dice', async (ctx) => {
   if (!ctx.message.dice || ctx.message.dice.emoji !== '🎰') return;
 
@@ -256,7 +257,9 @@ bot.on('message:dice', async (ctx) => {
   if (!isComment) {
     try {
       await ctx.api.deleteMessage(ctx.chat.id, ctx.message.message_id);
-    } catch (e) {}
+    } catch (e) {
+      console.error("Failed to delete main chat spin message:", e);
+    }
 
     const postLink = getPostLink(ctx);
     const warningMsg = await ctx.reply(
@@ -272,7 +275,7 @@ bot.on('message:dice', async (ctx) => {
   const userId = ctx.from.id;
   const rawUsername = ctx.from.username || ctx.from.first_name || `ID: ${userId}`;
   const displayName = ctx.from.username ? `@${ctx.from.username}` : rawUsername;
-  
+
   const currentSpinPostId = getTargetPostId(ctx);
   const currentSpinPostIdStr = currentSpinPostId ? currentSpinPostId.toString() : 'active';
 
@@ -284,7 +287,6 @@ bot.on('message:dice', async (ctx) => {
       .eq('telegram_id', userId)
       .maybeSingle();
 
-    // User သည် verified ဖြစ်ပြီး လက်ရှိ post ID နဲ့ ကိုက်ညီမှသာ ခွင့်ပြုမည်
     if (userRecord && userRecord.is_verified === true) {
       if (!userRecord.verified_post_id || userRecord.verified_post_id === currentSpinPostIdStr) {
         isVerifiedForThisPost = true;
@@ -294,14 +296,16 @@ bot.on('message:dice', async (ctx) => {
     console.error("Check verification error:", e);
   }
 
-  // အကယ်၍ Verify မဖြစ်သေးပါက (သို့မဟုတ် Post အသစ်ဖြစ်နေပါက) Spin ကို တန်းဖျက်မည်
+  // If user has not verified or verification doesn't match this post, delete spin immediately
   if (!isVerifiedForThisPost) {
     try {
       await ctx.api.deleteMessage(ctx.chat.id, ctx.message.message_id);
-    } catch (e) {}
+    } catch (e) {
+      console.error("Failed to delete unverified spin message:", e);
+    }
 
     const postLink = getPostLink(ctx);
-    const warningText = `⚠️ <b>Verification Required!</b>\n\n` +
+    const warningText = `⚠️ <b>Proof Verification Required!</b>\n\n` +
       `Your spin was deleted because you haven't verified for this post yet! Please send a screenshot reply with reaction (❤️ / 👍) and caption <code>WORLD BEST CRYPTO</code> first!\n\n` +
       `🔗 <b>Target Post:</b> <a href="${postLink}">Click Here To View Post</a>`;
 
@@ -316,7 +320,7 @@ bot.on('message:dice', async (ctx) => {
     return;
   }
 
-  // Verify ဖြစ်ပြီးသားဆိုရင် Spin ကို ဆက်လက်လုပ်ဆောင်ပေးမည်
+  // Process the spin successfully since user is fully verified for this specific comment/post
   const diceValue = ctx.message.dice.value;
   let replyText = '';
   const winCombination = getSlotResult(diceValue);

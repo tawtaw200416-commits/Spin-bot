@@ -121,7 +121,7 @@ bot.command('broadcast', async (ctx) => {
     await ctx.api.editMessageText(
       ctx.chat.id, 
       statusMsg.message_id, 
-      `✅ <b>Broadcast ပြီးစီးပါပြီ!</b>\n\n📤 ပို့ဆောင်နိုင်သူ - ${successCount} ဦး\n❌ မပို့နိုင်သူ - ${failCount} ဦး`, 
+      `✅ <b>Broadcast ပြီးစီးပါပြီ!</b>\n\n📤 ပို့ဆောင်နိုင်သူ - ${successCount} ဦးနှစ်ဦး\n❌ မပို့နိုင်သူ - ${failCount} ဦး`, 
       { parse_mode: 'HTML' }
     );
 
@@ -145,9 +145,9 @@ bot.on('message:photo', async (ctx) => {
   const repliedMessage = ctx.message.reply_to_message;
   const postCaption = repliedMessage?.text || repliedMessage?.caption || '';
 
-  // တိကျမှန်ကန်ရမည့် Main Post ၏ စာသား (ဥပမာ ပုံများထဲပါရှိသော "WORLD BEST CRYPTO")
+  // တိကျမှန်ကန်ရမည့် Main Post ၏ စာသား (ဥပမာ ပုံများထဲပါရှိသော စာသား သို့မဟုတ် သက်ဆိုင်ရာ Keyword)
   const expectedKeyword = "WORLD BEST CRYPTO"; 
-  const hasValidText = postCaption.includes(expectedKeyword);
+  const hasValidText = postCaption.includes(expectedKeyword) || postCaption.length > 0;
 
   if (!hasValidText) {
     const errorMsg = `❌ <b>Invalid Post Proof!</b>\n` +
@@ -214,15 +214,22 @@ bot.on('message:dice', async (ctx) => {
         console.error("Failed to delete unverified dice message:", e);
       }
 
-      // 2. သတိပေးစာ ပို့မည်
+      // 2. Group ထဲသို့ တိုက်ရိုက်မပို့ဘဲ သက်ဆိုင်ရာ User ၏ Spin လှည့်ခဲ့သည့် Post (သို့) Reply အနေဖြင့်သာ တိုက်ရိုက်သတိပေးစာပို့မည်
       const warningText = `⚠️ <b>Proof Verification Required!</b>\n\n` +
         `Please react (❤️/👍) to the main post and upload the screenshot proof first.\n\n` +
         `🔗 <b>Target Post:</b> <a href="https://t.me/Rampage528">Click Here To View Post</a>`;
 
-      const sentWarning = await ctx.reply(warningText, {
+      const warningOptions = { 
         parse_mode: 'HTML',
-        disable_web_page_preview: true
-      });
+        disable_web_page_preview: true,
+        reply_to_message_id: ctx.message.reply_to_message ? ctx.message.reply_to_message.message_id : ctx.message.message_id
+      };
+
+      if (ctx.message.message_thread_id) {
+        warningOptions.message_thread_id = ctx.message.message_thread_id;
+      }
+
+      const sentWarning = await ctx.reply(warningText, warningOptions);
       deleteMessageLater(ctx, ctx.chat.id, sentWarning.message_id, 10000);
       return; 
     }

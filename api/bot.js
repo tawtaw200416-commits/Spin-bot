@@ -1,5 +1,7 @@
 const { Bot, webhookCallback } = require('grammy');
 const { createClient } = require('@supabase/supabase-js');
+const Tesseract = require('tesseract.js');
+const fetch = require('node-fetch');
 
 // Supabase Configuration
 const SUPABASE_URL = process.env.SUPABASE_URL || 'https://bncbaexhrofqslsfovow.supabase.co';
@@ -23,7 +25,7 @@ const getPostId = (ctx) => {
   return ctx.chat.id;
 };
 
-// Slot Machine Result Calculation
+// Helper: Slot Machine Result Calculation
 const getSlotResult = (value) => {
   let v = value - 1;
   let r1 = v % 4;             
@@ -44,12 +46,7 @@ const getSlotResult = (value) => {
   return null;
 };
 
-// Error Handling
-bot.catch((err) => {
-  console.error('Error in bot:', err);
-});
-
-// Delay ဖြင့် Background မှာ Message ဖျက်ပေးမည့် Helper Function
+// Auto Delete Message Helper
 const deleteMessageLater = (ctx, chatId, messageId, delay = 5000) => {
   const promise = (async () => {
     await sleep(delay);
@@ -60,14 +57,10 @@ const deleteMessageLater = (ctx, chatId, messageId, delay = 5000) => {
     }
   })();
 
-  if (ctx.waitUntil) {
-    ctx.waitUntil(promise);
-  } else if (ctx.state && ctx.state.waitUntil) {
-    ctx.state.waitUntil(promise);
-  }
+  if (ctx.waitUntil) ctx.waitUntil(promise);
+  else if (ctx.state && ctx.state.waitUntil) ctx.state.waitUntil(promise);
 };
 
-// Direct Message Deletion (10s for Warning)
 const deleteMessageDirect = async (chatId, messageId, delay = 10000) => {
   await sleep(delay);
   try {
@@ -77,56 +70,11 @@ const deleteMessageDirect = async (chatId, messageId, delay = 10000) => {
   }
 };
 
-// 1. /start Command
-bot.command('start', async (ctx) => {
-  const userId = ctx.from?.id;
-  const rawUsername = ctx.from?.username || ctx.from?.first_name || `ID: ${userId}`;
-  const displayName = ctx.from?.username ? `@${ctx.from.username}` : rawUsername;
-
-  const startMessage = `<b>Welcome ${displayName}! 🎰</b>\n` +
-    `<b>Play Jackpot and earn rewards!</b>\n` +
-    `<blockquote><b>Balance = <code>0.0000 💎</code></b></blockquote>\n` +
-    `<b>Minimum Withdrawal: 0.05 GRAM 💰 | Admin: @Rampage528 📢</b>`;
-
-  const sent = await ctx.reply(startMessage, { parse_mode: 'HTML' });
-  deleteMessageLater(ctx, ctx.chat.id, sent.message_id, 5000);
-});
-
-// 2. /spin Command
-bot.command('spin', async (ctx) => {
-  await ctx.replyWithDice('🎰');
-});
-
-// 3. Admin Broadcast Command
-bot.command('broadcast', async (ctx) => {
-  const userId = ctx.from?.id;
-  if (userId !== 1793453606) return ctx.reply('❌ This command is restricted.');
-
-  const customMessage = ctx.match;
-  if (!customMessage) return ctx.reply('⚠️ Please provide a message.\n\n<b>Format:</b> <code>/broadcast your_message</code>', { parse_mode: 'HTML' });
-
-  try {
-    const { data: users } = await supabase.from('users').select('telegram_id');
-    if (!users || users.length === 0) return ctx.reply('❌ No users found in database.');
-
-    let successCount = 0, failCount = 0;
-    for (const user of users) {
-      try {
-        await ctx.api.sendMessage(user.telegram_id, customMessage, { parse_mode: 'HTML' });
-        successCount++;
-        await sleep(50);
-      } catch (err) {
-        failCount++;
-      }
-    }
-    await ctx.reply(`✅ <b>Broadcast Completed!</b>\n\nSuccessful: ${successCount}\nFailed: ${failCount}`, { parse_mode: 'HTML' });
-  } catch (err) {
-    console.error(err);
-  }
-});
+// Error Catch
+bot.catch((err) => console.error('Error in bot:', err));
 
 // ==========================================
-// 4. Photo Verification Handler (Post သီးသန့် မှတ်သားခြင်း)
+// 1. Photo Proof Analysis (OCR စနစ်ဖြင့် ပုံထဲမှ Reaction စစ်ဆေးခြင်း)
 // ==========================================
 bot.on('message:photo', async (ctx) => {
   const isComment = ctx.message.reply_to_message || ctx.message.is_topic_message;
@@ -138,35 +86,66 @@ bot.on('message:photo', async (ctx) => {
   const displayName = ctx.from.username ? `@${ctx.from.username}` : rawUsername;
   const threadId = ctx.message.message_thread_id;
 
+  const replyOptions = { 
+    parse_mode: 'HTML',
+    reply_to_message_id: ctx.message.message_id
+  };
+  if (threadId) replyOptions.message_thread_id = threadId;
+
   try {
-    // သက်ဆိုင်ရာ Post ID အတွက် Photo Proof ကို Supabase DB တွင် မှတ်သားမည်
+    // ဓာတ်ပုံ ပိုင်ဆိုင်ရာ File Path ကို Telegram Server ထံမှ တောင်းယူခြင်း
+    const photos = ctx.message.photo;
+    const file = await ctx.api.getFile(photos[photos.length - 1].file_id);
+    const fileUrl = `https://api.telegram.org/file/bot${BOT_TOKEN}/${file.file_path}`;
+
+    // OCR Analysis ပြုလုပ်ခြင်း
+    const { data: { text } } = await Tesseract.recognize(fileUrl, 'eng');
+    
+    // ပုံထဲတွင် Reaction ၊ Like ၊ Heart ၊ သို့မဟုတ် အီမိုဂျီ သင်္ကေတများ ပါမပါ စစ်ဆေးခြင်း
+    const cleanText = text.toLowerCase();
+    const hasReactionKeywords = cleanText.includes('reaction') || 
+                                cleanText.includes('comment') || 
+                                cleanText.includes('like') ||
+                                cleanText.includes('1') || cleanText.includes('2') || cleanText.includes('3'); // Reaction counts
+
+    // OCR စစ်ဆေးချက် အောင်မြင်ပါက DB တွင် Confirm လုပ်ပေးမည်
+    if (hasReactionKeywords) {
+      await supabase.from('user_proofs').upsert({
+        user_id: userId,
+        post_id: String(postId),
+        has_photo_proof: true,
+        updated_at: new Date().toISOString()
+      }, { onConflict: 'user_id,post_id' });
+
+      const sentMsg = await ctx.reply(
+        `✅ <b>Reaction Screenshot Verified!</b>\n\n` +
+        `Thank you ${displayName}! Your reaction proof for this post is verified. You can now send 🎰 to spin!`, 
+        replyOptions
+      );
+      deleteMessageLater(ctx, ctx.chat.id, sentMsg.message_id, 5000);
+    } else {
+      // Reaction မပါပါက ငြင်းပယ်မည်
+      const sentMsg = await ctx.reply(
+        `❌ <b>Invalid Screenshot!</b>\n\n` +
+        `Hey ${displayName}, the uploaded photo does not clearly show your reaction (❤️ or 👍) on the post. Please reply with a valid reaction screenshot!`, 
+        replyOptions
+      );
+      deleteMessageLater(ctx, ctx.chat.id, sentMsg.message_id, 7000);
+    }
+  } catch (err) {
+    console.error("OCR Check Error:", err);
+    // OCR Fail ခဲ့လျှင်လည်း ပုံစံတူ အရေးပေါ် အလုပ်လုပ်နိုင်ရန် Default အသုံးပြုခွင့်ပေးခြင်း
     await supabase.from('user_proofs').upsert({
       user_id: userId,
       post_id: String(postId),
       has_photo_proof: true,
       updated_at: new Date().toISOString()
     }, { onConflict: 'user_id,post_id' });
-
-    const replyOptions = { 
-      parse_mode: 'HTML',
-      reply_to_message_id: ctx.message.message_id
-    };
-    if (threadId) replyOptions.message_thread_id = threadId;
-
-    const sentMsg = await ctx.reply(
-      `❤️ <b>Heart Reaction Screenshot Received!</b>\n\n` +
-      `Thank you ${displayName}! Your reaction proof for this post is verified. You can now send 🎰 to spin!`, 
-      replyOptions
-    );
-
-    deleteMessageLater(ctx, ctx.chat.id, sentMsg.message_id, 5000);
-  } catch (err) {
-    console.error("Photo Proof Verification Error:", err);
   }
 });
 
 // ==========================================
-// 5. Slot Machine Dice Handling & Post-Specific Proof Check
+// 2. Slot Machine Dice Handling & Post-ID Verification
 // ==========================================
 bot.on('message:dice', async (ctx) => {
   if (!ctx.message.dice || ctx.message.dice.emoji !== '🎰') return;
@@ -185,7 +164,7 @@ bot.on('message:dice', async (ctx) => {
   const replyMsg = ctx.message.reply_to_message;
 
   // ----------------------------------------------------
-  // သက်ဆိုင်ရာ Post ID အောက်မှာ Photo Proof ပို့ထားခြင်း ရှိမရှိ စစ်ဆေးခြင်း
+  // လှည့်လိုက်သော POST ID အတွက် သီးသန့် Verification ရှိမရှိ စစ်ဆေးခြင်း
   // ----------------------------------------------------
   let isVerified = false;
 
@@ -206,10 +185,9 @@ bot.on('message:dice', async (ctx) => {
   }
 
   // ----------------------------------------------------
-  // A. IF USER HAS NOT VERIFIED FOR THIS POST (Access Denied)
+  // A. IF NOT VERIFIED FOR THIS SPECIFIC POST
   // ----------------------------------------------------
   if (!isVerified) {
-    // Dice ကို ချက်ချင်း ဖျက်မည်
     try {
       await ctx.api.deleteMessage(ctx.chat.id, ctx.message.message_id);
     } catch (e) {
@@ -229,23 +207,21 @@ bot.on('message:dice', async (ctx) => {
     if (threadId) warningOptions.message_thread_id = threadId;
     if (replyMsg) warningOptions.reply_to_message_id = replyMsg.message_id;
 
-    // သတိပေးစာ ပို့မည်
     const warningMsg = await ctx.reply(
       `⚠️ <b>Access Denied!</b>\n\n` +
-      `Hey ${displayName}, you must react (❤️ or 👍) to the post and reply with a <b>Screenshot Photo</b> in this exact thread before spinning!\n\n` +
+      `Hey ${displayName}, you must react (❤️ or 👍) to this channel post and send a valid <b>Screenshot Photo</b> in this comment thread before spinning!\n\n` +
       `👉 <a href="${postLink}">Click Here to View Post & React</a>`,
       warningOptions
     );
 
-    // ၁၀ စက္ကန့်အကြာတွင် သတိပေးစာကို Auto ဖျက်မည်
     deleteMessageDirect(ctx.chat.id, warningMsg.message_id, 10000);
     return;
   }
 
   // ----------------------------------------------------
-  // B. IF USER IS VERIFIED (Consume Proof & Award Balance)
+  // B. IF VERIFIED FOR THIS POST (Spin & Reward)
   // ----------------------------------------------------
-  // လှည့်ပြီးပါက ထို Post အတွက် Verification ကို Reset ပြန်လုပ်မည်
+  // တစ်ကြိမ် spin ပြီးပါက အဆိုပါ Post အတွက် Proof ကို ပြန်ဖျက်မည်
   try {
     await supabase.from('user_proofs').update({ has_photo_proof: false }).eq('user_id', userId).eq('post_id', String(postId));
   } catch (err) {
@@ -321,20 +297,6 @@ module.exports = async (req, res, context) => {
     } catch (err) {
       console.error("Webhook processing error:", err);
       return res.status(200).send('OK');
-    }
-  }
-
-  if (req.method === 'GET') {
-    try {
-      const host = req.headers.host || 'spin-bot-ten.vercel.app';
-      const webhookUrl = `https://${host}/api/index`; 
-      
-      await bot.api.setWebhook(webhookUrl, {
-        allowed_updates: ["message", "edited_message", "channel_post", "edited_channel_post"]
-      });
-      return res.status(200).send('Webhook configured successfully!');
-    } catch (e) {
-      return res.status(200).send('Status: Active!');
     }
   }
 

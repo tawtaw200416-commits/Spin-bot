@@ -9,13 +9,13 @@ const BOT_TOKEN = process.env.BOT_TOKEN || '8566391789:AAHxMWzB5EERqVAHI7Uf7rQod
 const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 const bot = new Bot(BOT_TOKEN);
 
-// Spin လှည့်ထားသူများ၏ Slot Result မထုတ်မီ ခလုတ်ခုံ (Pending Spin) များကို ခဏမှတ်ထားမည့် Database/Memory Object
+// Store pending spins in memory (User ID -> Spin Details)
 const pendingSpins = new Map();
 
 // Sleep Helper Function
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-// Slot Machine ရလဒ် တွက်ချက်ခြင်း
+// Slot Machine Result Calculation
 const getSlotResult = (value) => {
   let v = value - 1;
   let r1 = v % 4;             
@@ -41,7 +41,7 @@ bot.catch((err) => {
   console.error('Error in bot:', err);
 });
 
-// Delay ဖြင့် Background မှာ Message ဖျက်ပေးမည့် Helper Function
+// Helper Function to delete messages after delay
 const deleteMessageLater = (ctx, chatId, messageId, delay = 10000) => {
   const promise = (async () => {
     await sleep(delay);
@@ -78,7 +78,7 @@ bot.command('start', async (ctx) => {
   const startMessage = `<b>Welcome ${displayName}! 🎰</b>\n` +
     `<b>Play Jackpot and earn rewards!</b>\n` +
     `<blockquote><b>Balance = <code>0.0000 💎</code></b></blockquote>\n` +
-    `<b>Mini Withdraw 0.05 GRAM💰,@Rampage528📢</b>`;
+    `<b>Minimum Withdrawal: 0.05 GRAM 💰 | Admin: @Rampage528 📢</b>`;
 
   const sent = await ctx.reply(startMessage, { parse_mode: 'HTML' });
   deleteMessageLater(ctx, ctx.chat.id, sent.message_id, 5000);
@@ -87,14 +87,14 @@ bot.command('start', async (ctx) => {
 // 2. Admin Broadcast Command
 bot.command('broadcast', async (ctx) => {
   const userId = ctx.from?.id;
-  if (userId !== 1793453606) return ctx.reply('❌ Restricted.');
+  if (userId !== 1793453606) return ctx.reply('❌ This command is restricted.');
 
   const customMessage = ctx.match;
-  if (!customMessage) return ctx.reply('⚠️ စာသား ထည့်ပါ။');
+  if (!customMessage) return ctx.reply('⚠️ Please provide a message.\n\n<b>Format:</b> <code>/broadcast your_message</code>', { parse_mode: 'HTML' });
 
   try {
     const { data: users } = await supabase.from('users').select('telegram_id');
-    if (!users || users.length === 0) return ctx.reply('❌ User မရှိပါ။');
+    if (!users || users.length === 0) return ctx.reply('❌ No users found in database.');
 
     let successCount = 0, failCount = 0;
     for (const user of users) {
@@ -106,14 +106,14 @@ bot.command('broadcast', async (ctx) => {
         failCount++;
       }
     }
-    await ctx.reply(`✅ Broadcast ပြီးပါပြီ!\nအောင်မြင် - ${successCount}\nကျရှုံး - ${failCount}`);
+    await ctx.reply(`✅ <b>Broadcast Completed!</b>\n\nSuccessful: ${successCount}\nFailed: ${failCount}`, { parse_mode: 'HTML' });
   } catch (err) {
     console.error(err);
   }
 });
 
 // ==========================================
-// 3. Slot Machine Dice Handling
+// 3. Slot Machine Dice Handling (In specific comment thread)
 // ==========================================
 bot.on('message:dice', async (ctx) => {
   if (!ctx.message.dice || ctx.message.dice.emoji !== '🎰') return;
@@ -130,14 +130,14 @@ bot.on('message:dice', async (ctx) => {
   const threadId = ctx.message.message_thread_id;
   const replyMsg = ctx.message.reply_to_message;
 
-  // Dice Message ကို အရင် ဖျက်မည်
+  // Delete original dice message immediately
   try {
     await ctx.api.deleteMessage(ctx.chat.id, ctx.message.message_id);
   } catch (e) {
-    console.error("Error deleting dice:", e.message);
+    console.error("Error deleting dice message:", e.message);
   }
 
-  // Pending Spin အဖြစ် ယာယီသိမ်းထားမည်
+  // Save pending spin details for this user
   pendingSpins.set(userId, {
     diceValue: diceValue,
     timestamp: Date.now()
@@ -149,25 +149,34 @@ bot.on('message:dice', async (ctx) => {
     ? `https://t.me/${channelUsername}/${finalPostId}`
     : `https://t.me/c/${ctx.chat.id.toString().replace('-100', '')}/${finalPostId}`;
 
-  // User ထံ Reaction ပေးပြီး Proof ပုံပြန်ပို့ရန် သတိပေးစာ ပို့မည်
+  // Build options to reply ONLY in the exact comment thread where user spun
+  const warningOptions = { 
+    parse_mode: 'HTML',
+    disable_web_page_preview: true
+  };
+
+  if (threadId) {
+    warningOptions.message_thread_id = threadId;
+  }
+  if (replyMsg) {
+    warningOptions.reply_to_message_id = replyMsg.message_id;
+  }
+
+  // Send English warning message in the specific comment thread
   const warningMsg = await ctx.reply(
     `📸 <b>Reaction & Photo Proof Required!</b>\n\n` +
-    `Hey ${displayName}, spin မလှည့်မီ Post အား Reaction (❤️ သို့မဟုတ် 👍) ပေးထားသော <b>Screenshot ပုံ</b> ကို Reply ပြန်ပို့ပေးရပါမည်။\n\n` +
+    `Hey ${displayName}, before spinning, you must react (❤️ or 👍) to the channel post and send a <b>Screenshot (Photo)</b> as a reply in this comment thread!\n\n` +
     `👉 <a href="${postLink}">Click Here to View Post</a>\n\n` +
-    `<i>⚠️ Reaction ပေးထားသည့် ပုံ (Photo) ကို ဤနေရာတွင် Reply ပေးပြီးမှသာ Spin ရလဒ် ထွက်လာပါမည်။</i>`,
-    { 
-      parse_mode: 'HTML', 
-      disable_web_page_preview: true,
-      message_thread_id: threadId 
-    }
+    `<i>⚠️ Reply with your screenshot photo in this thread to claim your spin result!</i>`,
+    warningOptions
   );
 
-  // စာအိတ်ကို ၁၀ စက္ကန့် (10 seconds) အကြာတွင် auto ဖျက်မည်
+  // Auto delete warning message after 10 seconds
   deleteMessageDirect(ctx.chat.id, warningMsg.message_id, 10000);
 });
 
 // ==========================================
-// 4. User ထံမှ ဓာတ်ပုံ (Photo Proof) ရောက်ရှိလာသည့်အခါ စစ်ဆေးမည်
+// 4. Photo Proof Handling (In specific comment thread)
 // ==========================================
 bot.on('message:photo', async (ctx) => {
   const isComment = ctx.message.reply_to_message || ctx.message.is_topic_message;
@@ -176,17 +185,17 @@ bot.on('message:photo', async (ctx) => {
   const userId = ctx.from.id;
   const pending = pendingSpins.get(userId);
 
-  // Spin လှည့်ထားခြင်း မရှိပါက (သို့မဟုတ် ၁၀ မိနစ်ထက် ကျော်သွားပါက) လျစ်လျူရှုမည်
+  // Ignore if user has no active pending spin
   if (!pending) return;
 
   const diceValue = pending.diceValue;
-  pendingSpins.delete(userId); // Pending ထဲမှ ဖျက်မည်
+  pendingSpins.delete(userId); // Remove pending spin
 
   const rawUsername = ctx.from.username || ctx.from.first_name || `ID: ${userId}`;
   const displayName = ctx.from.username ? `@${ctx.from.username}` : rawUsername;
   const threadId = ctx.message.message_thread_id;
 
-  // Spin ရလဒ် တွက်ချက်ခြင်း
+  // Calculate spin result
   const winCombination = getSlotResult(diceValue);
   const reward = winCombination ? winCombination.reward : 0;
   let replyText = '';
@@ -211,25 +220,30 @@ bot.on('message:photo', async (ctx) => {
       replyText = `🎉 <b>Congratulations ${displayName}!</b>\n` +
         `<b>You got ${winCombination.name} and received ${reward} GRAM!</b>\n` +
         `<blockquote><b>Balance = <code>${newBalance.toFixed(6)} 💎</code></b></blockquote>\n` +
-        `<b>Mini Withdraw = 0.05 GRAM💰,📢@Rampage528</b>`;
+        `<b>Mini Withdraw = 0.05 GRAM 💰 | Admin: @Rampage528 📢</b>`;
     } else {
-      replyText = `❌ <b>Try again ${displayName}! Better luck next time.</b>\n` +
+      replyText = `❌ <b>Better luck next time, ${displayName}!</b>\n` +
         `<blockquote><b>Balance = <code>${newBalance.toFixed(6)} 💎</code></b></blockquote>\n` +
-        `<b>Mini Withdraw = 0.05 GRAM💰,📢@Rampage528</b>`;
+        `<b>Mini Withdraw = 0.05 GRAM 💰 | Admin: @Rampage528 📢</b>`;
     }
   } catch (error) {
     console.error("Supabase Error:", error);
-    replyText = `❌ <b>Try again ${displayName}! Better luck next time.</b>`;
+    replyText = `❌ <b>Better luck next time, ${displayName}!</b>`;
   }
 
-  // Spin ရလဒ် ထုတ်ပြန်ပေးမည်
-  const sentMsg = await ctx.reply(replyText, { 
-    parse_mode: 'HTML', 
-    reply_to_message_id: ctx.message.message_id,
-    message_thread_id: threadId 
-  });
+  // Reply with result in the specific comment thread
+  const replyOptions = { 
+    parse_mode: 'HTML',
+    reply_to_message_id: ctx.message.message_id
+  };
 
-  // ရလဒ်စာသားအား ၅ စက္ကန့်အကြာတွင် ဖျက်မည်
+  if (threadId) {
+    replyOptions.message_thread_id = threadId;
+  }
+
+  const sentMsg = await ctx.reply(replyText, replyOptions);
+
+  // Auto delete result message after 5 seconds
   deleteMessageLater(ctx, ctx.chat.id, sentMsg.message_id, 5000);
 });
 

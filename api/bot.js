@@ -72,27 +72,13 @@ const isCommentSection = (ctx) => {
   return isReply || isTopic || isAutoForward;
 };
 
-// ပိုမိုအားကောင်းသော Target Post ID ဖမ်းယူသည့် Helper Function
+// Target Post ID ထုတ်ယူမည့် Helper (ပိုမိုလွယ်ကူတိကျစေရန်)
 const getTargetPostId = (ctx) => {
-  const msg = ctx.message;
-  if (!msg) return 'general_active';
-
-  const replyTo = msg.reply_to_message;
+  const replyTo = ctx.message?.reply_to_message;
   if (replyTo) {
-    // Channel Linked Post ၏ Original Post ID (သို့) Reply Message ID ကို တိကျစွာ ထုတ်ယူမည်
-    return String(
-      replyTo.forward_from_message_id || 
-      replyTo.message_id || 
-      msg.message_thread_id || 
-      'general_active'
-    );
+    return String(replyTo.forward_from_message_id || replyTo.message_id || 'general');
   }
-
-  if (msg.message_thread_id) {
-    return String(msg.message_thread_id);
-  }
-
-  return 'general_active';
+  return String(ctx.message?.message_thread_id || 'general');
 };
 
 const getPostLink = (ctx) => {
@@ -254,7 +240,7 @@ bot.on('message:photo', async (ctx) => {
 
     const currentBalance = existingUser && existingUser.balance !== null ? parseFloat(existingUser.balance) : 0;
 
-    // Database တွင် ဤ User အတွက် Verify ဖြစ်ကြောင်းနှင့် Post ID ကို သိမ်းဆည်းမည်
+    // Database တွင် User အား Verified ဖြစ်ကြောင်း မှတ်သားမည်
     await supabase.from('users').upsert({
       telegram_id: userId,
       username: rawUsername,
@@ -297,8 +283,8 @@ bot.on('message:dice', async (ctx) => {
       .eq('telegram_id', userId)
       .maybeSingle();
 
-    // အရေးကြီးချက် - User သည် Database ထဲတွင် is_verified: true ဖြစ်နေုံနဲ့တင် 
-    // Post အဟောင်းဖြစ်စေ၊ အသစ်ဖြစ်စေ ဘယ် Comment မျိုးမှာမဆို Spin လှည့်ခွင့် အပြည့်အဝပေးမည် (အဟောင်းလည်း မပျက်ပါ)
+    // အဓိက ပြင်ဆင်ချက် - Database ထဲတွင် User သည် is_verified: true ဖြစ်နေရုံဖြင့် ID တိုက်စစ်နေစရာမလိုဘဲ 
+    // မည်သည့်နေရာ (comment thread) တွင်မဆို spin လှည့်ခွင့် အပြည့်အဝပေးမည်
     if (userRecord && userRecord.is_verified === true) {
       isVerified = true;
     }
@@ -306,7 +292,7 @@ bot.on('message:dice', async (ctx) => {
     console.error("Check verification error:", e);
   }
 
-  // လုံးဝ မ verify ရသေးတဲ့သူမှသာ Spin ကို ဖျက်ပြီး ပုံပို့ခိုင်းမည့် Warning ပြမည်
+  // လုံးဝမ verify ရသေးသောသူများအတွက်သာ Spin ကိုဖျက်ပြီး ပုံပို့ခိုင်းမည်
   if (!isVerified) {
     try {
       await ctx.api.deleteMessage(ctx.chat.id, ctx.message.message_id);
@@ -330,7 +316,7 @@ bot.on('message:dice', async (ctx) => {
     return;
   }
 
-  // Verify ပြီးသား User ဖြစ်ပါက Spin ကို မဖျက်ဘဲ ဆက်ကစားခွင့်ပေးပြီး Balance တွက်ချက်ပေးမည်
+  // Verify ပြီးသားသူအတွက် Spin ကို မဖျက်ဘဲ ဆက်ကစားခွင့်ပေးပြီး Result တွက်ချက်ပေးမည်
   const diceValue = ctx.message.dice.value;
   let replyText = '';
   const winCombination = getSlotResult(diceValue);

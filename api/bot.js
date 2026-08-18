@@ -60,17 +60,26 @@ const deleteMessageLater = (ctx, chatId, messageId, delay = 5000) => {
   }
 };
 
-// Helper to get Post Link
-const getPostLink = (ctx) => {
+// Helper to get Post Link & Unique Post ID (Target Post Thread/Message ID)
+const getPostDetails = (ctx) => {
   const chatId = ctx.chat?.id;
-  const threadId = ctx.message?.message_thread_id || ctx.message?.reply_to_message?.message_id;
+  // Handle both topic/forum threads or direct comment replies to the original post
+  const threadId = ctx.message?.message_thread_id || ctx.message?.reply_to_message?.message_id || ctx.message?.reply_to_message?.reply_to_message?.message_id;
   
-  if (chatId && threadId) {
+  return {
+    chatId,
+    postId: threadId || null
+  };
+};
+
+const getPostLink = (ctx) => {
+  const { chatId, postId } = getPostDetails(ctx);
+  if (chatId && postId) {
     let cleanChatId = chatId.toString();
     if (cleanChatId.startsWith('-100')) {
       cleanChatId = cleanChatId.substring(4);
     }
-    return `https://t.me/c/${cleanChatId}/${threadId}`;
+    return `https://t.me/c/${cleanChatId}/${postId}`;
   }
   return `https://t.me/Rampage528`;
 };
@@ -155,7 +164,7 @@ bot.command('broadcast', async (ctx) => {
   }
 });
 
-// 4. Strict Caption & Photo Verification Handling (Must be in a comment/thread)
+// 4. Strict Caption & Photo Verification Handling (Per Post Tracking)
 bot.on('message:photo', async (ctx) => {
   const isComment = ctx.message.reply_to_message || ctx.message.is_topic_message;
   if (!isComment) return;
@@ -163,6 +172,7 @@ bot.on('message:photo', async (ctx) => {
   const userId = ctx.from.id;
   const rawUsername = ctx.from.username || ctx.from.first_name || `ID: ${userId}`;
   const displayName = ctx.from.username ? `@${ctx.from.username}` : rawUsername;
+  const { postId } = getPostDetails(ctx);
 
   const photoCaption = ctx.message.caption || '';
   const isValidCaption = photoCaption.includes('WORLD BEST CRYPTO') || photoCaption.includes('game link');
@@ -179,9 +189,11 @@ bot.on('message:photo', async (ctx) => {
   }
 
   try {
+    // Save verification tied to this specific post ID so that new posts require re-verification
     await supabase.from('users').upsert({
       telegram_id: userId,
       username: rawUsername,
+      verified_post_id: postId ? postId.toString() : 'default',
       is_verified: true
     }, { onConflict: 'telegram_id' });
   } catch (e) {
@@ -190,7 +202,7 @@ bot.on('message:photo', async (ctx) => {
 
   const successMsg = await ctx.reply(
     `✅ <b>Verification Successful, ${displayName}!</b>\n` +
-    `Your screenshot is verified. You can now use unlimited 🎰 spins on this post!`,
+    `Your screenshot is verified for this post. You can now spin freely here!`,
     { 
       parse_mode: 'HTML',
       reply_to_message_id: ctx.message.message_id
@@ -200,11 +212,12 @@ bot.on('message:photo', async (ctx) => {
   deleteMessageLater(ctx, ctx.chat.id, successMsg.message_id, 5000);
 });
 
-// 5. Slot Machine Dice Handling (Verification Required Check)
+// 5. Slot Machine Dice Handling (Post-Specific Verification Check)
 bot.on('message:dice', async (ctx) => {
   if (!ctx.message.dice || ctx.message.dice.emoji !== '🎰') return;
 
   const isComment = ctx.message.reply_to_message || ctx.message.is_topic_message;
+  const { postId } = getPostDetails(ctx);
   
   const replyOptions = { 
     parse_mode: 'HTML',
@@ -216,7 +229,6 @@ bot.on('message:dice', async (ctx) => {
   }
 
   if (!isComment) {
-    // If sent directly in group main chat instead of post comment/thread, delete spin and reply strictly inside comment context or chat with 5s delete
     try {
       await ctx.api.deleteMessage(ctx.chat.id, ctx.message.message_id);
     } catch (e) {
@@ -238,23 +250,23 @@ bot.on('message:dice', async (ctx) => {
   const rawUsername = ctx.from.username || ctx.from.first_name || `ID: ${userId}`;
   const displayName = ctx.from.username ? `@${ctx.from.username}` : rawUsername;
 
-  let isVerified = false;
+  let isVerifiedForThisPost = false;
   try {
     const { data: userRecord } = await supabase
       .from('users')
-      .select('is_verified')
+      .select('is_verified, verified_post_id, balance')
       .eq('telegram_id', userId)
       .maybeSingle();
 
-    if (userRecord && userRecord.is_verified) {
-      isVerified = true;
+    if (userRecord && userRecord.is_verified && userRecord.verified_post_id === (postId ? postId.toString() : 'default')) {
+      isVerifiedForThisPost = true;
     }
   } catch (e) {
     console.error("Check verification error:", e);
   }
 
-  // If not verified, instantly delete the unverified spin dice message and send warning reply that auto-deletes in 5 seconds
-  if (!isVerified) {
+  // If not verified for this specific active post, delete spin and alert
+  if (!isVerifiedForThisPost) {
     try {
       await ctx.api.deleteMessage(ctx.chat.id, ctx.message.message_id);
     } catch (e) {
@@ -263,7 +275,7 @@ bot.on('message:dice', async (ctx) => {
 
     const postLink = getPostLink(ctx);
     const warningText = `⚠️ <b>Proof Verification Required!</b>\n\n` +
-      `Your spin was deleted because you are not verified! Please react to the post (❤️ / 👍) and send your screenshot reply with caption <code>WORLD BEST CRYPTO</code> first!\n\n` +
+      `Your spin was deleted because this is a new post and you haven't verified for it yet! Please react and send your screenshot reply with caption <code>WORLD BEST CRYPTO</code> first!\n\n` +
       `🔗 <b>Target Post:</b> <a href="${postLink}">Click Here To View Post</a>`;
 
     const warningMsg = await ctx.reply(warningText, { 
@@ -277,7 +289,7 @@ bot.on('message:dice', async (ctx) => {
     return;
   }
 
-  // If verified, process spin results and correctly accumulate balance, replying directly to user's comment
+  // If verified for this post, process spin results and precisely accumulate balance
   const diceValue = ctx.message.dice.value;
   let replyText = '';
   const winCombination = getSlotResult(diceValue);
@@ -301,7 +313,8 @@ bot.on('message:dice', async (ctx) => {
       telegram_id: userId,
       username: rawUsername,
       balance: newBalance,
-      is_verified: true 
+      is_verified: true,
+      verified_post_id: postId ? postId.toString() : 'default'
     }, { onConflict: 'telegram_id' });
 
     if (winCombination) {
@@ -342,7 +355,7 @@ module.exports = async (req, res, context) => {
         context && context.waitUntil ? context.waitUntil.bind(context) : undefined
       );
 
-      res.status(status = response.status);
+      res.status(response.status);
       const text = await response.text();
       return res.send(text);
     } catch (err) {

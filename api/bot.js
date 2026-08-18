@@ -38,7 +38,7 @@ bot.catch((err) => {
   console.error('Error in bot:', err);
 });
 
-// Helper Function to Delete Message Later (Guaranteed deletion with context fallback)
+// Helper Function to Delete Message Later (Guaranteed deletion within 5 seconds for all bot messages)
 const deleteMessageLater = (ctx, chatId, messageId, delay = 5000) => {
   const promise = (async () => {
     await sleep(delay);
@@ -63,7 +63,6 @@ const deleteMessageLater = (ctx, chatId, messageId, delay = 5000) => {
 // Helper to get Post Link & Unique Post ID (Target Post Thread/Message ID)
 const getPostDetails = (ctx) => {
   const chatId = ctx.chat?.id;
-  // Handle both topic/forum threads or direct comment replies to the original post
   const threadId = ctx.message?.message_thread_id || ctx.message?.reply_to_message?.message_id || ctx.message?.reply_to_message?.reply_to_message?.message_id;
   
   return {
@@ -115,13 +114,17 @@ bot.command('broadcast', async (ctx) => {
   const userId = ctx.from?.id;
   
   if (userId !== 1793453606) {
-    return ctx.reply('❌ This command is restricted.');
+    const sent = await ctx.reply('❌ This command is restricted.');
+    deleteMessageLater(ctx, ctx.chat.id, sent.message_id, 5000);
+    return;
   }
 
   const customMessage = ctx.match;
 
   if (!customMessage) {
-    return ctx.reply('⚠️ Please provide a message.\n\n<b>Format:</b> <code>/broadcast your_message_here</code>', { parse_mode: 'HTML' });
+    const sent = await ctx.reply('⚠️ Please provide a message.\n\n<b>Format:</b> <code>/broadcast your_message_here</code>', { parse_mode: 'HTML' });
+    deleteMessageLater(ctx, ctx.chat.id, sent.message_id, 5000);
+    return;
   }
 
   try {
@@ -130,7 +133,9 @@ bot.command('broadcast', async (ctx) => {
       .select('telegram_id');
 
     if (error || !users || users.length === 0) {
-      return ctx.reply('❌ No users found in database.');
+      const sent = await ctx.reply('❌ No users found in database.');
+      deleteMessageLater(ctx, ctx.chat.id, sent.message_id, 5000);
+      return;
     }
 
     const statusMsg = await ctx.reply(`🚀 Broadcasting to ${users.length} users...`);
@@ -157,14 +162,16 @@ bot.command('broadcast', async (ctx) => {
       `✅ <b>Broadcast Completed!</b>\n\n📤 Success - ${successCount}\n❌ Failed - ${failCount}`, 
       { parse_mode: 'HTML' }
     );
+    deleteMessageLater(ctx, ctx.chat.id, statusMsg.message_id, 5000);
 
   } catch (err) {
     console.error("Broadcast Error:", err);
-    ctx.reply('❌ Error occurred during broadcast.');
+    const sent = await ctx.reply('❌ Error occurred during broadcast.');
+    deleteMessageLater(ctx, ctx.chat.id, sent.message_id, 5000);
   }
 });
 
-// 4. Strict Caption & Photo Verification Handling (Per Post Tracking)
+// 4. Strict Caption & Photo Verification Handling (Per-Post Tracking)
 bot.on('message:photo', async (ctx) => {
   const isComment = ctx.message.reply_to_message || ctx.message.is_topic_message;
   if (!isComment) return;
@@ -189,7 +196,7 @@ bot.on('message:photo', async (ctx) => {
   }
 
   try {
-    // Save verification tied to this specific post ID so that new posts require re-verification
+    // Save verification tied strictly to this post ID so new posts require new verification
     await supabase.from('users').upsert({
       telegram_id: userId,
       username: rawUsername,
@@ -212,7 +219,7 @@ bot.on('message:photo', async (ctx) => {
   deleteMessageLater(ctx, ctx.chat.id, successMsg.message_id, 5000);
 });
 
-// 5. Slot Machine Dice Handling (Post-Specific Verification Check)
+// 5. Slot Machine Dice Handling (Post-Specific Verification Check & Precise Balance Accrual)
 bot.on('message:dice', async (ctx) => {
   if (!ctx.message.dice || ctx.message.dice.emoji !== '🎰') return;
 
@@ -265,7 +272,7 @@ bot.on('message:dice', async (ctx) => {
     console.error("Check verification error:", e);
   }
 
-  // If not verified for this specific active post, delete spin and alert
+  // If not verified for this specific post, delete the unverified spin message
   if (!isVerifiedForThisPost) {
     try {
       await ctx.api.deleteMessage(ctx.chat.id, ctx.message.message_id);

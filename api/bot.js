@@ -60,13 +60,14 @@ const deleteMessageLater = (ctx, chatId, messageId, delay = 5000) => {
   }
 };
 
-// Fixed Helper to get Precise Target Post ID for Per-Post Verification Tracking
+// Robust Helper to get Precise Target Post ID for Per-Post Verification Tracking
 const getPostDetails = (ctx) => {
   const chatId = ctx.chat?.id;
   const replyTo = ctx.message?.reply_to_message;
   let postId = null;
 
   if (replyTo) {
+    // If replied message is a discussion/comment thread origin or forwarded header
     postId = replyTo.forward_from_message_id || replyTo.message_id;
   } else {
     postId = ctx.message?.message_thread_id || null;
@@ -190,7 +191,7 @@ bot.on('message:photo', async (ctx) => {
   const rawUsername = ctx.from.username || ctx.from.first_name || `ID: ${userId}`;
   const displayName = ctx.from.username ? `@${ctx.from.username}` : rawUsername;
   
-  const targetPostId = ctx.message.reply_to_message?.message_id ? ctx.message.reply_to_message.message_id.toString() : 'default';
+  const { postId } = getPostDetails(ctx);
 
   const photoCaption = ctx.message.caption || '';
   const isValidCaption = photoCaption.includes('WORLD BEST CRYPTO') || photoCaption.includes('game link');
@@ -207,7 +208,7 @@ bot.on('message:photo', async (ctx) => {
   }
 
   try {
-    // Fetch existing user balance to preserve it during verification upsert
+    // Preserve existing balance when updating verification status
     let { data: existingUser } = await supabase
       .from('users')
       .select('balance')
@@ -220,7 +221,7 @@ bot.on('message:photo', async (ctx) => {
       telegram_id: userId,
       username: rawUsername,
       balance: currentBalance,
-      verified_post_id: targetPostId,
+      verified_post_id: postId,
       is_verified: true
     }, { onConflict: 'telegram_id' });
   } catch (e) {
@@ -244,7 +245,7 @@ bot.on('message:dice', async (ctx) => {
   if (!ctx.message.dice || ctx.message.dice.emoji !== '🎰') return;
 
   const isComment = ctx.message.reply_to_message || ctx.message.is_topic_message;
-  const targetPostId = ctx.message.reply_to_message?.message_id ? ctx.message.reply_to_message.message_id.toString() : 'default';
+  const { postId } = getPostDetails(ctx);
   
   const replyOptions = { 
     parse_mode: 'HTML',
@@ -285,14 +286,15 @@ bot.on('message:dice', async (ctx) => {
       .eq('telegram_id', userId)
       .maybeSingle();
 
-    if (userRecord && userRecord.is_verified && userRecord.verified_post_id === targetPostId) {
+    // Check if user is verified and if the post ID matches securely
+    if (userRecord && userRecord.is_verified && userRecord.verified_post_id === postId) {
       isVerifiedForThisPost = true;
     }
   } catch (e) {
     console.error("Check verification error:", e);
   }
 
-  // If not verified for this specific post, warn user and delete the spin message cleanly
+  // If not verified for this specific post, warn user and delete spin message
   if (!isVerifiedForThisPost) {
     try {
       await ctx.api.deleteMessage(ctx.chat.id, ctx.message.message_id);
@@ -316,7 +318,7 @@ bot.on('message:dice', async (ctx) => {
     return;
   }
 
-  // If verified for this post, process spin normally without deleting spin, accumulate exact reward safely
+  // If verified, process spin normally without deleting the spin, add exact rewards
   const diceValue = ctx.message.dice.value;
   let replyText = '';
   const winCombination = getSlotResult(diceValue);
@@ -341,7 +343,7 @@ bot.on('message:dice', async (ctx) => {
       username: rawUsername,
       balance: newBalance,
       is_verified: true,
-      verified_post_id: targetPostId
+      verified_post_id: postId
     }, { onConflict: 'telegram_id' });
 
     if (winCombination) {

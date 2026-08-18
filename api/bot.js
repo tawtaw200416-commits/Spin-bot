@@ -38,7 +38,7 @@ bot.catch((err) => {
   console.error('Error in bot:', err);
 });
 
-// Delay ဖြင့် Background မှာ Message ဖျက်ပေးမည့် Helper Function
+// Delay ဖြင့် Background မှာ Comment ထဲက Message များကို 5s ဖြင့် ဖျက်ပေးမည့် Helper Function
 const deleteMessageLater = (ctx, chatId, messageId, delay = 5000) => {
   const promise = (async () => {
     await sleep(delay);
@@ -68,18 +68,22 @@ bot.command('start', async (ctx) => {
     `<b>Mini Withdraw 0.05 GRAM💰,@Rampage528📢</b>`;
 
   const sent = await ctx.reply(startMessage, { parse_mode: 'HTML' });
-  deleteMessageLater(ctx, ctx.chat.id, sent.message_id, 5000);
+  // Start command သည် Chat င်္ထဲတွင်ဖြစ်သဖြင့် ဖျက်ရန်မလို (သို့သော် လိုအပ်ပါက သုံးနိုင်သည်)
 });
 
-// 2. /spin Command (Prompting user to send screenshot first)
+// 2. /spin Command
 bot.command('spin', async (ctx) => {
-  const spinPromptMsg = await ctx.reply(
-    `❌ <b>Spin Denied!</b>\n\n` +
-    `📸 Please send a screenshot showing that you have liked or reacted to the post first before spinning!\n\n` +
-    `🔗 <a href="https://t.me/Rampage528">Click here to view the post</a>`,
-    { parse_mode: 'HTML', disable_web_page_preview: true }
-  );
-  deleteMessageLater(ctx, ctx.chat.id, spinPromptMsg.message_id, 10000);
+  const isComment = ctx.message.reply_to_message || ctx.message.is_topic_message;
+  
+  const promptText = `⚠️ <b>Proof Verification Required!</b>\n\n` +
+    `Please react (❤️/👍) to the main post and upload the screenshot proof first.\n\n` +
+    `🔗 <b>Target Post:</b> <a href="https://t.me/Rampage528/1">Click Here To View Post</a>`;
+
+  const sentMsg = await ctx.reply(promptText, { parse_mode: 'HTML', disable_web_page_preview: true });
+  
+  if (isComment) {
+    deleteMessageLater(ctx, ctx.chat.id, sentMsg.message_id, 5000);
+  }
 });
 
 // ==========================================
@@ -128,7 +132,7 @@ bot.command('broadcast', async (ctx) => {
     await ctx.api.editMessageText(
       ctx.chat.id, 
       statusMsg.message_id, 
-      `✅ <b>Broadcast ပြီးစီးပါပြီ!</b>\n\n📤 ပို့ဆောင်နိုင်သူ - ${successCount} ဦးချင်း\n❌ မပို့နိုင်သူ - ${failCount} ဦး`, 
+      `✅ <b>Broadcast ပြီးစီးပါပြီ!</b>\n\n📤 ပို့ဆောင်နိုင်သူ - ${successCount} ဦး\n❌ မပို့နိုင်သူ - ${failCount} ဦး`, 
       { parse_mode: 'HTML' }
     );
 
@@ -138,7 +142,7 @@ bot.command('broadcast', async (ctx) => {
   }
 });
 
-// 4. Photo Verification Handling (Screenshot စစ်ဆေးခြင်း)
+// 4. Photo Verification Handling inside Comment
 bot.on('message:photo', async (ctx) => {
   const isComment = ctx.message.reply_to_message || ctx.message.is_topic_message;
   if (!isComment) return;
@@ -147,43 +151,39 @@ bot.on('message:photo', async (ctx) => {
   const rawUsername = ctx.from.username || ctx.from.first_name || `ID: ${userId}`;
   const displayName = ctx.from.username ? `@${ctx.from.username}` : rawUsername;
 
-  // မှန်ကန်သော Screenshot ပုံ ပို့လာခြင်းအတွက် Verification အောင်မြင်ကြောင်းပြသခြင်း
-  const verifyMsg = await ctx.reply(
+  const successMsg = await ctx.reply(
     `✅ <b>Verification Successful, ${displayName}!</b>\n` +
-    `Your like/reaction has been verified. Now you can send your 🎰 slot dice to spin!`,
+    `Your screenshot has been verified. Now you can spin with 🎰!`,
     { 
       parse_mode: 'HTML',
       reply_to_message_id: ctx.message.message_id
     }
   );
-  deleteMessageLater(ctx, ctx.chat.id, verifyMsg.message_id, 6000);
+  deleteMessageLater(ctx, ctx.chat.id, successMsg.message_id, 5000);
 });
 
-// 5. Slot Machine Dice Handling (စစ်ဆေးပြီးမှ Spin ခွင့်ပြုခြင်း)
+// 5. Slot Machine Dice Handling (Comment ထဲတွင် ပုံမပါဘဲ Spin လှည့်လျှင် သတိပေးခြင်း)
 bot.on('message:dice', async (ctx) => {
   if (!ctx.message.dice || ctx.message.dice.emoji !== '🎰') return;
 
   const isComment = ctx.message.reply_to_message || ctx.message.is_topic_message;
   if (!isComment) return;
 
-  // Check if the user replied with a photo or if verification is required
-  // ဤနေရာတွင် ပုံနှင့်တကွ Reply လုပ်ထားခြင်း ရှိမရှိ စစ်ဆေးသည် (သို့မဟုတ်ပါက သတိပေးစာပြမည်)
   const repliedMessage = ctx.message.reply_to_message;
-  const hasUserSentPhotoBefore = repliedMessage && repliedMessage.from && repliedMessage.from.id === ctx.from.id;
+  const hasUserSentPhotoBefore = repliedMessage && repliedMessage.from && repliedMessage.from.id === ctx.from.id && repliedMessage.photo;
 
-  // အကယ်၍ ပုံမတင်ဘဲ တိုက်ရိုက် Dice ပစ်လိုက်ပါက (သို့မဟုတ် ပုံမဟုတ်ဘဲ စာနဲ့ Reply လုပ်ထားပါက)
-  if (!hasUserSentPhotoBefore || !repliedMessage.photo) {
-    const warningMsg = await ctx.reply(
-      `⚠️ <b>Warning: Spin Denied!</b>\n\n` +
-      `❌ You must send a screenshot showing that you have liked or reacted to the post first!\n\n` +
-      `🔗 <a href="https://t.me/Rampage528">Click here to view the post</a>`,
-      { 
-        parse_mode: 'HTML', 
-        disable_web_page_preview: true,
-        reply_to_message_id: ctx.message.message_id 
-      }
-    );
-    deleteMessageLater(ctx, ctx.chat.id, warningMsg.message_id, 8000);
+  // ပုံမတင်ဘဲ တိုက်ရိုက် Spin လှည့်ထားပါက ပုံပါအတိုင်း သတိပေးစာပြမည်
+  if (!hasUserSentPhotoBefore) {
+    const warningText = `⚠️ <b>Proof Verification Required!</b>\n\n` +
+      `Please react (❤️/👍) to the main post and upload the screenshot proof first.\n\n` +
+      `🔗 <b>Target Post:</b> <a href="https://t.me/Rampage528/1">Click Here To View Post</a>`;
+
+    const warningMsg = await ctx.reply(warningText, { 
+      parse_mode: 'HTML', 
+      disable_web_page_preview: true,
+      reply_to_message_id: ctx.message.message_id 
+    });
+    deleteMessageLater(ctx, ctx.chat.id, warningMsg.message_id, 5000);
     return;
   }
 

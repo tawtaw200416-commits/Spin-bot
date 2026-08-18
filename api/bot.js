@@ -151,7 +151,7 @@ bot.command('broadcast', async (ctx) => {
   }
 });
 
-// 4. Photo Verification Handling inside Comment (Checking Original Post Contents & Keywords)
+// 4. Photo Verification Handling inside Comment (Strict Original Post Check only)
 bot.on('message:photo', async (ctx) => {
   const isComment = ctx.message.reply_to_message || ctx.message.is_topic_message;
   if (!isComment) return;
@@ -163,20 +163,18 @@ bot.on('message:photo', async (ctx) => {
   const repliedMessage = ctx.message.reply_to_message;
   const repliedText = repliedMessage ? (repliedMessage.text || repliedMessage.caption || '') : '';
 
-  // မူရင်း Post ၏ စာသားများ (game link, invite code, channel, service စသည်ဖြင့် မူရင်း Post တစ်ခုခု၏ Keywords များ) ပါဝင်မှုကို စစ်ဆေးခြင်း
-  const hasPostKeywords = repliedText.includes('game link') || 
-                          repliedText.includes('invite code') || 
-                          repliedText.includes('CHANNEL') || 
-                          repliedText.includes('Service') ||
-                          repliedText.includes('WORLD BEST CRYPTO') ||
-                          repliedText.includes('Target Post') ||
-                          repliedText.includes('Proof Verification Required');
+  // 1. Bot ရဲ့ Prompt Message ကို Reply ပေးထားခြင်း ဟုတ်မဟုတ် စစ်ဆေးရန် (Bot Prompt ကို Reply ပေးထားလျှင် ပယ်ချမည်)
+  const isBotPrompt = repliedText.includes('Proof Verification Required') || repliedText.includes('Target Post');
 
-  // အကယ်၍ KBZ Pay slip လိုမျိုး မဆိုင်တဲ့ပုံဖြစ်ပြီး Reply လုပ်ထားတဲ့စာက Post အစစ်အမှန် မဟုတ်လျှင် ပယ်ချမည်
-  if (!hasPostKeywords) {
+  // 2. တရားဝင် မူရင်း Channel Post ၏ စာသားအစစ်အမှန် ပါဝင်ရမည် (ဥပမာ - WORLD BEST CRYPTO သို့မဟုတ် game link / invite code စသည်တို့)
+  const isRealChannelPost = repliedText.includes('WORLD BEST CRYPTO') || 
+                            (repliedText.includes('game link') && repliedText.includes('invite code'));
+
+  // အကယ်၍ Bot Prompt ကို Reply ပေးထားလျှင် (သို့) မူရင်း Post အစစ်အမှန် မဟုတ်လျှင် (KBZ slip ကဲ့သို့ ပုံများ) တားဆီးမည်
+  if (isBotPrompt || !isRealChannelPost) {
     const errorMsg = await ctx.reply(
       `❌ <b>Invalid Screenshot!</b>\n` +
-      `Please reply directly to the correct channel post with its screenshot.`,
+      `Please reply directly to the <b>original channel post</b> (not the bot message) with its screenshot.`,
       { parse_mode: 'HTML', reply_to_message_id: ctx.message.message_id }
     );
     deleteMessageLater(ctx, ctx.chat.id, ctx.message.message_id, 5000);
@@ -206,11 +204,12 @@ bot.on('message:dice', async (ctx) => {
   const repliedMessage = ctx.message.reply_to_message;
   const repliedText = repliedMessage ? (repliedMessage.text || repliedMessage.caption || '') : '';
 
-  // User တင်ထားသော ဓာတ်ပုံသည် ကိုယ်ပိုင် Screenshot ပုံဖြစ်ပြီး၊ ၎င်းပုံကို Bot (သို့) မူရင်း Post အောက်တွင် Reply ပေးထားခြင်းဖြစ်ရမည်
+  // User တင်ထားသော ဓာတ်ပုံသည် ကိုယ်ပိုင် Screenshot ပုံဖြစ်ပြီး၊ ၎င်းပုံသည် မူရင်း Channel Post အောက်တွင် Reply ပေးထားခြင်းဖြစ်ရမည်
   const isUserValidPhotoProof = repliedMessage && 
     repliedMessage.from && 
     repliedMessage.from.id === ctx.from.id && 
-    repliedMessage.photo;
+    repliedMessage.photo &&
+    !(repliedText.includes('Proof Verification Required'));
 
   if (!isUserValidPhotoProof) {
     const postLink = getPostLink(ctx);

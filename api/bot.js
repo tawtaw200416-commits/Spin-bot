@@ -197,7 +197,7 @@ bot.command('broadcast', async (ctx) => {
   }
 });
 
-// 4. Photo Verification Handling
+// 4. Photo Verification Handling (User ID ကို အခြေခံ၍ Supabase တွင် အသေအချာ မှတ်သားပေးခြင်း)
 bot.on('message:photo', async (ctx) => {
   if (!isCommentSection(ctx)) return;
 
@@ -233,6 +233,7 @@ bot.on('message:photo', async (ctx) => {
   }
 
   try {
+    // ပထမဦးစွာ ယခင်ရှိပြီးသား balance ကို ဆွဲထုတ်မည်
     let { data: existingUser } = await supabase
       .from('users')
       .select('balance')
@@ -241,19 +242,25 @@ bot.on('message:photo', async (ctx) => {
 
     const currentBalance = existingUser && existingUser.balance !== null ? parseFloat(existingUser.balance) : 0;
 
-    // Database တွင် သက်ဆိုင်ရာ post ID နှင့်တကွ မှတ်သားသိမ်းဆည်းမည်
-    await supabase.from('users').upsert({
+    // User ၏ telegram_id ကို Primary Key / Unique အနေဖြင့် verified_post_id နှင့်တကွ အတိအကျ သိမ်းဆည်းမည်
+    const { error: upsertError } = await supabase.from('users').upsert({
       telegram_id: userId,
       username: rawUsername,
       balance: currentBalance,
       verified_post_id: targetPostIdStr,
       is_verified: true
-    }, { onConflict: 'telegram_id' });
+    }, { 
+      onConflict: 'telegram_id' 
+    });
+
+    if (upsertError) {
+      console.error("Supabase verification save error:", upsertError);
+    }
   } catch (e) {
-    console.error("Supabase verification save error:", e);
+    console.error("Supabase verification exception:", e);
   }
 
-  // Verify အောင်မြင်ကြောင်းစာသား (Post Link လုံးဝမပါဝင်တော့ပါ)
+  // Verify အောင်မြင်ကြောင်းစာသား (Post Link လုံးဝမပါဝင်ပါ)
   const successMsg = await ctx.reply(
     `✅ <b>Complete Verified User: ${displayName}!</b>\n` +
     `Your screenshot is successfully verified. You can now spin freely in this post thread without restriction! 🎰`,
@@ -267,7 +274,7 @@ bot.on('message:photo', async (ctx) => {
   deleteMessageLater(ctx, ctx.chat.id, successMsg.message_id, 5000);
 });
 
-// 5. Slot Machine Dice Handling
+// 5. Slot Machine Dice Handling (User ID နှင့် Post ID ကို စစ်ဆေး၍ မှတ်သားထားမှုအတိုင်း Spin ခွင့်ပြုပေးခြင်း)
 bot.on('message:dice', async (ctx) => {
   if (!ctx.message.dice || ctx.message.dice.emoji !== '🎰') return;
   if (!isCommentSection(ctx)) return;
@@ -282,14 +289,14 @@ bot.on('message:dice', async (ctx) => {
   let isVerifiedForThisPost = false;
 
   try {
-    const { data: userRecord } = await supabase
+    // Database မှ User ၏ telegram_id ဖြင့် verify ဖြစ်မှုကို စစ်ဆေးမည်
+    const { data: userRecord, error: fetchError } = await supabase
       .from('users')
       .select('is_verified, verified_post_id, balance')
       .eq('telegram_id', userId)
       .maybeSingle();
 
-    // User သည် verify ပြီးသားဖြစ်ပြီး လက်ရှိ post thread နှင့် တူညီနေပါက မဖျက်ဘဲ spin လှည့်ခွင့်ပေးမည်
-    if (userRecord && userRecord.is_verified === true) {
+    if (!fetchError && userRecord && userRecord.is_verified === true) {
       if (!userRecord.verified_post_id || userRecord.verified_post_id === currentSpinPostIdStr || currentSpinPostIdStr === 'active') {
         isVerifiedForThisPost = true;
       }

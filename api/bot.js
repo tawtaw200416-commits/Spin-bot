@@ -267,7 +267,7 @@ bot.on('message:photo', async (ctx) => {
   deleteMessageLater(ctx, ctx.chat.id, successMsg.message_id, 2000);
 });
 
-// 5. Slot Machine Dice Handling (Group Slow Mode Dynamic Cooldown)
+// 5. Slot Machine Dice Handling (Verification + Group Slow Mode Dynamic Cooldown Check)
 bot.on('message:dice', async (ctx) => {
   if (!ctx.message.dice || ctx.message.dice.emoji !== '🎰') return;
   if (!isCommentSection(ctx)) return;
@@ -276,8 +276,8 @@ bot.on('message:dice', async (ctx) => {
   const rawUsername = ctx.from.username || ctx.from.first_name || `ID: ${userId}`;
   const displayName = ctx.from.username ? `@${ctx.from.username}` : rawUsername;
 
-  // Group setting ထဲမှ Slow Mode အချိန်ကို အလိုအလျောက် ယူမည် (စက္ကန့်ကို မီလီစက္ကန့်ပြောင်းရန် * 1000 လုပ်သည်)
-  let slowModeSeconds = 10; // Default အနေဖြင့် Group မှာ မသတ်မှတ်ထားရင် ၁၀ စက္ကန့်ဟု သတ်မှတ်မည်
+  // Group setting ထဲမှ Slow Mode အချိန်ကို အလိုအလျောက် ယူမည် (Default အနေဖြင့် Group မှာ မသတ်မှတ်ထားရင် ၁၀ စက္ကန့်ဟု သတ်မှတ်မည်)
+  let slowModeSeconds = 10;
   try {
     const chatInfo = await ctx.getChat();
     if (chatInfo && chatInfo.slow_mode_delay) {
@@ -287,9 +287,10 @@ bot.on('message:dice', async (ctx) => {
     console.error("Failed to fetch chat slow mode:", err);
   }
 
+  // Cooldown စစ်ဆေးခြင်း
   const now = Date.now();
   const lastSpinTime = spinCooldowns.get(userId) || 0;
-  const cooldownTime = slowModeSeconds * 1000; 
+  const cooldownTime = slowModeSeconds * 1000; // စက္ကန့်ကို မီလီစက္ကန့်ပြောင်းခြင်း
 
   if (now - lastSpinTime < cooldownTime) {
     const remainingSeconds = Math.ceil((cooldownTime - (now - lastSpinTime)) / 1000);
@@ -299,7 +300,7 @@ bot.on('message:dice', async (ctx) => {
 
     const cooldownMsg = await ctx.reply(
       `⏳ <b>Slow down ${displayName}!</b>\n` +
-      `Group slow mode is active. Please wait <b>${remainingSeconds} seconds</b> before spinning again.`,
+      `Please wait <b>${remainingSeconds} seconds</b> before spinning again.`,
       { 
         parse_mode: 'HTML',
         reply_to_message_id: ctx.message.reply_to_message ? ctx.message.reply_to_message.message_id : undefined,

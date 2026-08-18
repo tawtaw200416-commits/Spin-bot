@@ -271,10 +271,9 @@ bot.on('message:dice', async (ctx) => {
   const rawUsername = ctx.from.username || ctx.from.first_name || `ID: ${userId}`;
   const displayName = ctx.from.username ? `@${ctx.from.username}` : rawUsername;
 
-  const currentSpinPostId = getTargetPostId(ctx);
-  const currentSpinPostIdStr = currentSpinPostId ? String(currentSpinPostId) : 'active';
-
   let isVerifiedForThisPost = false;
+  let currentSpinPostIdStr = 'active';
+
   try {
     const { data: userRecord } = await supabase
       .from('users')
@@ -282,17 +281,17 @@ bot.on('message:dice', async (ctx) => {
       .eq('telegram_id', userId)
       .maybeSingle();
 
-    // 🔍 တိကျစွာစစ်ဆေးခြင်း: Database ထဲရှိ verified_post_id သည် လက်ရှိ post ID နှင့် တူနေရမည်
+    // 💡 ရှင်းလင်းချက်: အကယ်၍ user သည် တစ်ကြိမ် verify လုပ်ထားပြီးသားဖြစ်ပါက (is_verified === true)
+    // အဆိုပါ post thread အတွင်းတွင် မည်သည့် spin မဆို အလွယ်တကူ ခွင့်ပြုပေးမည် (ID တိုက်ဆိုင်စစ်ဆေးမှုကို လျှော့ချပေးထားသည်)
     if (userRecord && userRecord.is_verified === true) {
-      if (userRecord.verified_post_id === currentSpinPostIdStr) {
-        isVerifiedForThisPost = true;
-      }
+      isVerifiedForThisPost = true;
+      currentSpinPostIdStr = userRecord.verified_post_id || 'active';
     }
   } catch (e) {
     console.error("Check verification error:", e);
   }
 
-  // Post အသစ်ဖြစ်နေပြီး ဤ post အတွက် verify မလုပ်ရသေးမှသာ ဖျက်ပြီး ထပ်တောင်းမည်
+  // လုံးဝမ verify ရသေးသော user များအတွက်သာ spin ကိုဖျက်ပြီး ပုံပို့ရန် တောင်းဆိုမည်
   if (!isVerifiedForThisPost) {
     try {
       await ctx.api.deleteMessage(ctx.chat.id, ctx.message.message_id);
@@ -302,7 +301,7 @@ bot.on('message:dice', async (ctx) => {
 
     const postLink = getPostLink(ctx);
     const warningText = `⚠️ <b>Proof Verification Required!</b>\n\n` +
-      `Your spin was deleted because you haven't verified for this specific post yet! Please send a screenshot reply with reaction (❤️ / 👍) and caption <code>WORLD BEST CRYPTO</code> first!\n\n` +
+      `Your spin was deleted because you haven't verified for this post yet! Please send a screenshot reply with reaction (❤️ / 👍) and caption <code>WORLD BEST CRYPTO</code> first!\n\n` +
       `🔗 <b>Target Post:</b> <a href="${postLink}">Click Here To View Post</a>`;
 
     const warningMsg = await ctx.reply(warningText, { 
@@ -316,7 +315,7 @@ bot.on('message:dice', async (ctx) => {
     return;
   }
 
-  // Verify ပြီးသား user ဖြစ်ပါက ဤ post တွင် အကန့်အသတ်မရှိ ဆက်လက် spin လှည့်ခွင့်ပေးမည်
+  // Verify ပြီးသား user ဖြစ်ပါက မဖျက်ဘဲ ဆက်လက် spin လှည့်ခွင့်ပေးမည်
   const diceValue = ctx.message.dice.value;
   let replyText = '';
   const winCombination = getSlotResult(diceValue);

@@ -276,8 +276,8 @@ bot.on('message:dice', async (ctx) => {
   const rawUsername = ctx.from.username || ctx.from.first_name || `ID: ${userId}`;
   const displayName = ctx.from.username ? `@${ctx.from.username}` : rawUsername;
 
-  // Group setting ထဲမှ Slow Mode အချိန်ကို အလိုအလျောက် ယူမည် (Default အနေဖြင့် Group မှာ မသတ်မှတ်ထားရင် ၁၀ စက္ကန့်ဟု သတ်မှတ်မည်)
-  let slowModeSeconds = 10;
+  // Group setting ထဲမှ Slow Mode အချိန်ကို အလိုအလျောက် ယူမည် (အကယ်၍ Group တွင် Slow Mode မရှိပါက ပုံသေ 5 စက္ကန့် သုံးမည်)
+  let slowModeSeconds = 5;
   try {
     const chatInfo = await ctx.getChat();
     if (chatInfo && chatInfo.slow_mode_delay) {

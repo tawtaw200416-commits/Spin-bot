@@ -12,7 +12,7 @@ const bot = new Bot(BOT_TOKEN);
 // Sleep Helper Function
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-// Helper: Post/Thread ID တိကျစွာ ရယူခြင်း
+// Helper: သက်ဆိုင်ရာ Comment / Thread ၏ မူရင်း Post ID ကို တိကျစွာ ရယူခြင်း
 const getPostId = (ctx) => {
   if (ctx.message?.message_thread_id) {
     return String(ctx.message.message_thread_id);
@@ -23,7 +23,7 @@ const getPostId = (ctx) => {
   return String(ctx.chat.id);
 };
 
-// Telegram Slot Machine ၏ 777 အပါအဝင် တရားဝင် ရလဒ်များ တွက်ချက်ခြင်း
+// Slot Machine ရလဒ် တွက်ချက်ခြင်း
 const getSlotResult = (value) => {
   let v = value - 1;
   let r1 = v % 4;             
@@ -44,19 +44,19 @@ const getSlotResult = (value) => {
   return null;
 };
 
-// Error Handling
+// Global Error Handler
 bot.catch((err) => {
   console.error('Error in bot:', err);
 });
 
-// Delay ဖြင့် Background မှာ Message ဖျက်ပေးမည့် Helper Function
+// Delay ဖြင့် Message ဖျက်ပေးမည့် Helper Function (Default 5s)
 const deleteMessageLater = (ctx, chatId, messageId, delay = 5000) => {
   const promise = (async () => {
     await sleep(delay);
     try {
       await ctx.api.deleteMessage(chatId, messageId);
     } catch (e) {
-      console.error('Delete message failed:', e);
+      console.error('Delete message failed:', e.message);
     }
   })();
 
@@ -67,13 +67,13 @@ const deleteMessageLater = (ctx, chatId, messageId, delay = 5000) => {
   }
 };
 
-// Direct Message Deletion Helper ( Warning message များ ၁၀ စက္ကန့်အကြာတွင် ဖျက်ရန်)
+// Direct Deletion Helper (သတိပေးစာ ၁၀ စက္ကန့်အကြာတွင် ဖျက်ရန်)
 const deleteMessageDirect = async (chatId, messageId, delay = 10000) => {
   await sleep(delay);
   try {
     await bot.api.deleteMessage(chatId, messageId);
   } catch (e) {
-    console.error(`Direct delete failed for ${messageId}:`, e.message);
+    console.error(`Direct delete failed:`, e.message);
   }
 };
 
@@ -97,19 +97,19 @@ bot.command('spin', async (ctx) => {
   await ctx.replyWithDice('🎰');
 });
 
-// 3. Broadcast Command (Admin 1793453606)
+// 3. Admin Broadcast Command (ID: 1793453606)
 bot.command('broadcast', async (ctx) => {
   const userId = ctx.from?.id;
   if (userId !== 1793453606) return ctx.reply('❌ Restricted.');
 
   const customMessage = ctx.match;
-  if (!customMessage) return ctx.reply('⚠️ /broadcast <message>');
+  if (!customMessage) return ctx.reply('⚠️ /broadcast <your_message>');
 
   try {
     const { data: users } = await supabase.from('users').select('telegram_id');
-    if (!users || users.length === 0) return ctx.reply('❌ No users.');
+    if (!users || users.length === 0) return ctx.reply('❌ User မရှိပါ။');
 
-    const statusMsg = await ctx.reply(`🚀 User ${users.length} ဦးထံသို့ ပို့နေပါပြီ...`);
+    const statusMsg = await ctx.reply(`🚀 User ${users.length} ဦးထံ ပို့နေပါပြီ...`);
     let successCount = 0, failCount = 0;
 
     for (const user of users) {
@@ -125,7 +125,7 @@ bot.command('broadcast', async (ctx) => {
     await ctx.api.editMessageText(
       ctx.chat.id, 
       statusMsg.message_id, 
-      `✅ <b>Broadcast ပြီးပါပြီ!</b>\n\n📤 ပို့ပြီး - ${successCount}\n❌ မရောက် - ${failCount}`, 
+      `✅ <b>Broadcast ပြီးပါပြီ!</b>\n\n📤 အောင်မြင် - ${successCount}\n❌ မရောက်ပါ - ${failCount}`, 
       { parse_mode: 'HTML' }
     );
   } catch (err) {
@@ -134,11 +134,11 @@ bot.command('broadcast', async (ctx) => {
 });
 
 // ==========================================
-// 4. Photo Proof Handling (ပုံပို့လျှင် DB ထဲသေချာမှတ်မည်)
+// 4. Photo Proof Handling (သီးသန့် Comment Thread အတွက် စစ်ဆေးမှတ်သားခြင်း)
 // ==========================================
 bot.on('message:photo', async (ctx) => {
   const isComment = ctx.message.reply_to_message || ctx.message.is_topic_message;
-  if (!isComment) return;
+  if (!isComment) return; // Channel Comment မဟုတ်ပါက ကျော်မည်
 
   const userId = ctx.from.id;
   const postId = getPostId(ctx);
@@ -146,13 +146,13 @@ bot.on('message:photo', async (ctx) => {
   const displayName = ctx.from.username ? `@${ctx.from.username}` : rawUsername;
 
   try {
-    // 1. User မရှိသေးပါက Users Table ထဲ ထည့်မည်
+    // 1. User Info ကို DB ထဲ ရေးသွင်းမည်
     await supabase.from('users').upsert({
       telegram_id: userId,
       username: rawUsername
     }, { onConflict: 'telegram_id' });
 
-    // 2. Proof Table ထဲတွင် Post ID နှင့် တွဲလျက် True ဟု မှတ်မည်
+    // 2. Proof Table တွင် User + Post ID တွဲလျက် Access ပေးထားကြောင်း မှတ်သားမည်
     const { error } = await supabase.from('user_proofs').upsert({
       user_id: userId,
       post_id: postId,
@@ -173,9 +173,11 @@ bot.on('message:photo', async (ctx) => {
       replyOptions.message_thread_id = ctx.message.message_thread_id;
     }
 
+    // သက်ဆိုင်ရာ Comment တွင်သာ Access ရကြောင်း စာပြန်မည်
     const sentMsg = await ctx.reply(
-      `❤️ <b>Reaction Screenshot Verified!</b>\n\n` +
-      `Thank you ${displayName}! You now have access to spin 🎰 for this post!`, 
+      `📸 <b>Reaction Screenshot Recorded!</b>\n\n` +
+      `ကျေးဇူးတင်ပါတယ် ${displayName}! ဒီ Post အတွက် Reaction Proof ကို လက်ခံရရှိပါပြီ။\n\n` +
+      `🎰 <b>ယခု Spin (Slot) လှည့်နိုင်ပါပြီ!</b>`, 
       replyOptions
     );
 
@@ -186,7 +188,7 @@ bot.on('message:photo', async (ctx) => {
 });
 
 // ==========================================
-// 5. Dice Handling & Proof Check
+// 5. Dice Handling & Strict Proof Verification Check
 // ==========================================
 bot.on('message:dice', async (ctx) => {
   if (!ctx.message.dice || ctx.message.dice.emoji !== '🎰') return;
@@ -201,7 +203,7 @@ bot.on('message:dice', async (ctx) => {
   const displayName = ctx.from.username ? `@${ctx.from.username}` : rawUsername;
 
   // --------------------------------------------------
-  // ၁။ DB ထဲတွင် ဒီ User သည် ဒီ Post အတွက် ပုံ ပို့ထားပြီးပြီလား စစ်မည်
+  // ၁။ DB ထဲတွင် ဒီ User သည် အဆိုပါ Post အတွက် ပုံ ပို့ထားပြီးပြီလား စစ်မည်
   // --------------------------------------------------
   let isVerified = false;
 
@@ -221,17 +223,17 @@ bot.on('message:dice', async (ctx) => {
   }
 
   // --------------------------------------------------
-  // A. ပုံ မပို့ရသေးပါက (ခွင့်မပြုပါ - Dice ဖျက်မည် + Warning ပို့မည်)
+  // A. ပုံ မပို့ရသေးပါက (Dice ဖျက်မည် + သက်ဆိုင်ရာ Comment ထဲတွင် Warning ပို့မည်)
   // --------------------------------------------------
   if (!isVerified) {
-    // Dice ကို ဖျက်မည်
+    // Dice ကို ချက်ချင်း ဖျက်မည်
     try {
       await ctx.api.deleteMessage(ctx.chat.id, ctx.message.message_id);
     } catch (e) {
       console.error("Dice delete failed:", e.message);
     }
 
-    // Link တည်ဆောက်ခြင်း
+    // သက်ဆိုင်ရာ Post လင့်ခ် တည်ဆောက်ခြင်း
     const threadId = ctx.message.message_thread_id;
     const replyMsg = ctx.message.reply_to_message;
     const finalPostId = threadId || (replyMsg ? replyMsg.message_id : ctx.message.message_id);
@@ -245,12 +247,15 @@ bot.on('message:dice', async (ctx) => {
       parse_mode: 'HTML',
       disable_web_page_preview: true
     };
-    if (threadId) warningOptions.message_thread_id = threadId;
+    if (threadId) {
+      warningOptions.message_thread_id = threadId;
+    }
 
+    // သက်ဆိုင်ရာ Comment Thread ထဲတွင်သာ သတိပေးစာ ထွက်မည်
     const warningMsg = await ctx.reply(
-      `⚠️ <b>Access Denied!</b>\n\n` +
-      `Hey ${displayName}, You must send a reaction screenshot photo in this comment thread first before spinning!\n\n` +
-      `👉 <a href="${postLink}">Click Here to View Post & React</a>`,
+      `⚠️ <b>Spin လှည့်ခွင့် မရှိသေးပါ!</b>\n\n` +
+      `${displayName} မင်္ဂလာပါ၊ Spin (🎰) မလှည့်မီ သက်ဆိုင်ရာ Post ကို ❤️/👍 Reaction ပေးထားကြောင်း <b>Screenshot ပုံကို ဒီ Comment Thread ထဲသို့ အရင် ပို့ပေးပါ!</b>\n\n` +
+      `👉 <a href="${postLink}">ဒီနေရာကိုနှိပ်၍ မူရင်း Post သို့သွားပါ</a>`,
       warningOptions
     );
 
@@ -260,9 +265,9 @@ bot.on('message:dice', async (ctx) => {
   }
 
   // --------------------------------------------------
-  // B. ပုံ ပို့ထားပြီးပါက (Spin အလုပ်လုပ်မည် + Proof Reset လုပ်မည်)
+  // B. ပုံ ပို့ထားပြီးပါက (Proof Reset ပြန်လုပ်မည် + Spin ရလဒ်ပေးမည်)
   // --------------------------------------------------
-  // တစ်ကြိမ်လှည့်ပြီးပါက DB မှ Proof ကို ပြန်ဖျက်/Reset လုပ်မည် (နောက်တစ်ကြိမ် လှည့်လျှင် ပုံပြန်ပို့ရမည်)
+  // လှည့်ပြီးပါက DB ထဲမှ Proof Access ကို Reset ပြန်လုပ်မည် (ထပ်လှည့်ချင်ပါက ပုံအသစ် ပြန်ပို့ရမည်)
   try {
     await supabase
       .from('user_proofs')
@@ -292,7 +297,7 @@ bot.on('message:dice', async (ctx) => {
       newBalance = Math.round((currentBalance + reward) * 1000000) / 1000000;
     }
 
-    // Upsert User Balance
+    // Balance ကို DB တွင် Update/Insert လုပ်ခြင်း
     await supabase.from('users').upsert({
       telegram_id: userId,
       username: rawUsername,

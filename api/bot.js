@@ -121,7 +121,7 @@ bot.command('broadcast', async (ctx) => {
     await ctx.api.editMessageText(
       ctx.chat.id, 
       statusMsg.message_id, 
-      `✅ <b>Broadcast ပြီးစီးပါပြီ!</b>\n\n📤 ပို့ဆောင်နိုင်သူ - ${successCount} ဦးဉီး\n❌ မပို့နိုင်သူ - ${failCount} ဦး`, 
+      `✅ <b>Broadcast ပြီးစီးပါပြီ!</b>\n\n📤 ပို့ဆောင်နိုင်သူ - ${successCount} ဦး\n❌ မပို့နိုင်သူ - ${failCount} ဦး`, 
       { parse_mode: 'HTML' }
     );
 
@@ -132,7 +132,7 @@ bot.command('broadcast', async (ctx) => {
 });
 
 // ==========================================
-// 4. Handle Photo (Comment ထဲတွင် ပုံဖြင့် Proof တင်စစ်ဆေးခြင်း - ငွေလွှဲစလစ်နှင့် အမှန်တကယ် Post စာသားပါပုံကို တင်းကျပ်စွာစစ်ဆေးရန်)
+// 4. Handle Photo (Comment ထဲတွင် ပုံဖြင့် Proof တင်စစ်ဆေးခြင်း)
 // ==========================================
 bot.on('message:photo', async (ctx) => {
   const isComment = ctx.message.reply_to_message || ctx.message.is_topic_message;
@@ -143,19 +143,23 @@ bot.on('message:photo', async (ctx) => {
 
   const repliedMessage = ctx.message.reply_to_message;
   
-  const postText = repliedMessage?.text || repliedMessage?.caption || '';
+  // မူရင်း Post ၏ စာသားအမျိုးမျိုးကို စုံလင်စွာ ရှာဖွေခြင်း
+  const postText = repliedMessage?.text || '';
+  const postCaption = repliedMessage?.caption || '';
   const quoteText = repliedMessage?.quote?.text || '';
+  const forwardText = repliedMessage?.forward_origin?.chat?.title || '';
   const messageCaption = ctx.message.caption || '';
-  const forwardChatTitle = repliedMessage?.forward_origin?.chat?.title || '';
 
   const expectedKeyword = "WORLD BEST CRYPTO";
   
-  const combinedCheckText = `${postText} ${quoteText} ${forwardChatTitle}`;
+  // စာသားအမျိုးမျိုးထဲတွင် Keyword ပါဝင်ခြင်း ရှိမရှိ စစ်ဆေးခြင်း
+  const combinedCheckText = `${postText} ${postCaption} ${quoteText} ${forwardText}`;
   const hasCorrectPostText = combinedCheckText.includes(expectedKeyword) || 
                              postText.includes(expectedKeyword) || 
+                             postCaption.includes(expectedKeyword) || 
                              quoteText.includes(expectedKeyword);
 
-  // 1. ငွေလွှဲစလစ် (သို့မဟုတ်) ပြေစာပုံစံ အချက်အလက်များ ပါဝင်ပါက လုံးဝ (လုံးဝ) ပယ်ချရန်
+  // ငွေလွှဲစလစ် (သို့မဟုတ်) မဆိုင်သော ပြေစာပုံစံ ဟုတ်မဟုတ် စစ်ဆေးခြင်း
   const lowerCaption = messageCaption.toLowerCase();
   const isReceiptOrInvalidImage = lowerCaption.includes('kbz') || 
                                   lowerCaption.includes('kpay') || 
@@ -163,16 +167,13 @@ bot.on('message:photo', async (ctx) => {
                                   lowerCaption.includes('receipt') ||
                                   lowerCaption.includes('ks') ||
                                   lowerCaption.includes('bank') ||
-                                  lowerCaption.includes('e-receipt') ||
                                   lowerCaption.includes('ကျပ်') ||
-                                  lowerCaption.includes('ငွေလွှဲ') ||
-                                  lowerCaption.includes('လုပ်ဆောင်သောချိန်') ||
-                                  lowerCaption.includes('လုပ်ဆောင်မှုအမှတ်');
+                                  lowerCaption.includes('ငွေလွှဲ');
 
-  // 2. သက်ဆိုင်ရာ Official Post ၏ စာသားပါဝင်မှုနှင့် ငွေလွှဲစလစ်ကင်းစင်မှုကို တင်းကျပ်စွာ စစ်ဆေးခြင်း
+  // အကယ်၍ Post စာသား မမှန်ကန်ပါက (သို့မဟုတ်) ငွေလွှဲစလစ်ဖြစ်နေပါက
   if (!hasCorrectPostText || isReceiptOrInvalidImage) {
     const errorMsg = `❌ <b>Invalid Post Proof!</b>\n` +
-      `The screenshot does not match the official post (${expectedKeyword}) or contains a bank receipt/invalid image. Please upload a valid reaction screenshot on the correct post!`;
+      `ကျေးဇူးပြု၍ Official Post (${expectedKeyword}) ၏ Comment အောက်တွင်သာ အသဲပေးထားသော ပုံမှန် Screenshot ကို Reply လုပ်၍ တင်ပေးပါ။ (ငွေလွှဲစလစ်များနှင့် အခြားပုံများ မရပါ။)`;
     
     const sentErr = await ctx.reply(errorMsg, {
       parse_mode: 'HTML',
@@ -183,7 +184,6 @@ bot.on('message:photo', async (ctx) => {
   }
 
   try {
-    // မှန်ကန်သော Post ပုံစံဖြစ်မှသာ Verified အဖြစ် Supabase တွင် မှတ်တမ်းတင်မည်
     await supabase.from('users').upsert({
       telegram_id: userId,
       username: rawUsername,
@@ -191,7 +191,7 @@ bot.on('message:photo', async (ctx) => {
     }, { onConflict: 'telegram_id' });
 
     const replyText = `✅ <b>Post Proof Verified Successfully!</b>\n` +
-      `Your reaction screenshot for this post is confirmed. You can now roll 🎰 to spin!`;
+      `သင့်၏ Reaction ပုံကို စစ်ဆေးအတည်ပြုပြီးပါပြီ။ ယခု 🎰 ကို လှည့်နိုင်ပါပြီ။`;
 
     const sentMsg = await ctx.reply(replyText, {
       parse_mode: 'HTML',
@@ -226,16 +226,13 @@ bot.on('message:dice', async (ctx) => {
       .eq('telegram_id', userId)
       .maybeSingle();
 
-    // Verified မဖြစ်သေးပါက (သို့မဟုတ်) Database တွင် is_verified အမှန် မဖြစ်သေးပါက
     if (!user || !user.is_verified) {
-      // 1. လှည့်ထားသော Spin (Dice) မက်ဆေ့ခ်ျကို ချက်ချင်းပြန်ဖျက်မည်
       try {
         await ctx.api.deleteMessage(ctx.chat.id, ctx.message.message_id);
       } catch (e) {
         console.error("Failed to delete unverified dice message:", e);
       }
 
-      // 2. သက်ဆိုင်ရာ Post ၏ Direct Link ကို တည်ဆောက်ခြင်း
       let chatIdStr = String(ctx.chat.id);
       if (chatIdStr.startsWith('-100')) {
         chatIdStr = chatIdStr.substring(4); 
@@ -245,8 +242,8 @@ bot.on('message:dice', async (ctx) => {
       const postLink = targetMessageId ? `https://t.me/c/${chatIdStr}/${targetMessageId}` : `https://t.me/Rampage528`;
 
       const warningText = `⚠️ <b>Verification Required, ${displayName}!</b>\n\n` +
-        `You have not verified your reaction screenshot yet, or you posted on an invalid post.\n\n` +
-        `📌 Please check this <a href="${postLink}">Official Post Link</a>, upload the correct screenshot proof in the comments, and then spin again!`;
+        `သင်သည် Reaction ပုံ တင်၍ Verified မလုပ်ရသေးပါ (သို့) မှန်ကန်သော Post အောက်တွင် မဟုတ်ပါ။\n\n` +
+        `📌 ကျေးဇူးပြု၍ ဤ <a href="${postLink}">Official Post Link</a> တွင် အသဲပေးထားသော ပုံကို Comment ဖြင့် အရင်တင်ပြီးမှ Spin ပါ။`;
 
       const warningOptions = { 
         parse_mode: 'HTML',
@@ -263,7 +260,6 @@ bot.on('message:dice', async (ctx) => {
       return; 
     }
 
-    // --- Verified အမှန်တကယ်ဖြစ်မှသာ Spin ရလဒ်များကို တွက်ချက်ပေးမည် ---
     const diceValue = ctx.message.dice.value;
     let replyText = '';
     const winCombination = getSlotResult(diceValue);

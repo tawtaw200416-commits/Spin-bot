@@ -9,20 +9,57 @@ const BOT_TOKEN = process.env.BOT_TOKEN || '8566391789:AAHxMWzB5EERqVAHI7Uf7rQod
 const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 const bot = new Bot(BOT_TOKEN);
 
-// User တစ်ယောက်ချင်းစီ မည်သည့် Post Thread တွင် Verification အောင်မြင်ထားသလဲဆိုသည်ကို မှတ်ထားမည့် Memory Map
-// Map Key: `${userId}_${threadId}`
+// Serverless Memory cache
 const verifiedUsers = new Map();
 
-// Helper Function: Post တစ်ခုချင်းစီ၏ Main Thread ID ကို တိကျစွာ ယူပေးသည့် Function
+// Helper Function: Main Post / Discussion Thread ID ကို အတိအကျ ယူပေးခြင်း
 const getThreadId = (ctx) => {
-  // Telegram Channel Post Comment / Group Topic များအတွက် Main Post Message ID ကို စစ်ဆေးခြင်း
   if (ctx.message?.message_thread_id) {
     return ctx.message.message_thread_id.toString();
   }
   if (ctx.message?.reply_to_message) {
     return (ctx.message.reply_to_message.message_thread_id || ctx.message.reply_to_message.message_id).toString();
   }
-  return 'default';
+  return null;
+};
+
+// Helper Function: User ၏ Verification Status ကို Memory + Supabase Database တွင်ပါ စစ်ဆေးခြင်း
+const isUserVerified = async (userId, threadId) => {
+  const verifyKey = `${userId}_${threadId}`;
+  if (verifiedUsers.get(verifyKey)) return true;
+
+  try {
+    const { data } = await supabase
+      .from('verified_posts')
+      .select('id')
+      .eq('telegram_id', userId)
+      .eq('thread_id', threadId)
+      .maybeSingle();
+
+    if (data) {
+      verifiedUsers.set(verifyKey, true);
+      return true;
+    }
+  } catch (e) {
+    // Database table မရှိသေးပါက Memory Map သာ သုံးမည်
+  }
+  return false;
+};
+
+// Helper Function: User ၏ Verification Status ကို Memory + Database တွင် သိမ်းဆည်းခြင်း
+const saveVerification = async (userId, threadId) => {
+  const verifyKey = `${userId}_${threadId}`;
+  verifiedUsers.set(verifyKey, true);
+
+  try {
+    await supabase.from('verified_posts').upsert({
+      telegram_id: userId,
+      thread_id: threadId,
+      verified_at: new Date().toISOString()
+    }, { onConflict: 'telegram_id,thread_id' });
+  } catch (e) {
+    console.error("Save Verification DB error:", e);
+  }
 };
 
 // Sleep Helper Function
@@ -30,21 +67,18 @@ const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 // Telegram Slot Machine ၏ 777 အပါအဝင် တရားဝင် ရလဒ်များအားလုံး တိကျစွာ တွက်ချက်သည့် Function
 const getSlotResult = (value) => {
-  // Telegram ၏ တရားဝင်တန်ဖိုး (1 မှ 64 ထိ)
   let v = value - 1;
   let r1 = v % 4;             
   let r2 = Math.floor(v / 4) % 4; 
   let r3 = Math.floor(v / 16) % 4;
 
-  // 777 / BAR / အသီးများအတွက် တရားဝင် သင်္ကေတနှင့် ဆုကြေးများ
   const symbols = {
-    0: { name: '🏷️ BAR BAR BAR', reward: 0.00080 },    // BAR = 0.00080 GRAM
-    1: { name: '🍇 🍇 🍇',       reward: 0.00050 },   // Grape = 0.00050 GRAM
-    2: { name: '🍋 🍋 🍋',       reward: 0.00030 },   // Lemon = 0.00030 GRAM
-    3: { name: '7️⃣ 7️⃣ 7️⃣ (Jackpot)', reward: 0.0010 } // 777 = 0.0010 GRAM (သို့မဟုတ် လိုချင်သောတန်ဖိုး)
+    0: { name: '🏷️ BAR BAR BAR', reward: 0.00080 },    
+    1: { name: '🍇 🍇 🍇',       reward: 0.00050 },   
+    2: { name: '🍋 🍋 🍋',       reward: 0.00030 },   
+    3: { name: '7️⃣ 7️⃣ 7️⃣ (Jackpot)', reward: 0.0010 } 
   };
 
-  // ၃ ခုတန်းမှသာ ဆုပေးမည်
   if (r1 === r2 && r2 === r3) {
     return symbols[r3] || null;
   }
@@ -105,7 +139,6 @@ bot.command('broadcast', async (ctx) => {
     return ctx.reply('❌ This command is restricted.');
   }
 
-  // Admin ရိုက်လိုက်သော စာသားကို ယူခြင်း (ဥပမာ - /broadcast စာသား)
   const customMessage = ctx.match;
 
   if (!customMessage) {
@@ -157,14 +190,23 @@ bot.command('broadcast', async (ctx) => {
 // ==========================================
 bot.on('message:photo', async (ctx) => {
   const isComment = ctx.message.reply_to_message || ctx.message.is_topic_message;
-  if (!isComment) return;
+  const threadId = getThreadId(ctx);
+
+  // သက်ဆိုင်ရာ Target Post Comment / Thread မဟုတ်ဘဲ ပြင်ပတွင် ပို့သောပုံများကို ငြင်းပယ်ခြင်း
+  if (!isComment || !threadId) {
+    const sentErr = await ctx.reply(
+      `❌ <b>Invalid Proof Photo!</b>\n\nPlease reply with the screenshot directly inside the target post comment section.`,
+      { parse_mode: 'HTML', reply_to_message_id: ctx.message.message_id }
+    );
+    deleteMessageLater(ctx, ctx.chat.id, sentErr.message_id, 5000);
+    deleteMessageLater(ctx, ctx.chat.id, ctx.message.message_id, 5000);
+    return;
+  }
 
   const userId = ctx.from.id;
-  const threadId = getThreadId(ctx);
-  const verifyKey = `${userId}_${threadId}`;
 
-  // User ၏ ပုံပို့ဆောင်မှုကို အတည်ပြုပြီး Verification key ကို Memory Map တွင် သိမ်းဆည်းခြင်း
-  verifiedUsers.set(verifyKey, true);
+  // User ၏ ပုံပို့ဆောင်မှုကို အတည်ပြုပြီး Memory + Database တွင် တိကျစွာ မှတ်သားခြင်း
+  await saveVerification(userId, threadId);
 
   const replyText = `✅ <b>Post Proof Verified!</b>\n` +
     `Your reaction screenshot for this post is confirmed. You can now roll 🎰 to spin!`;
@@ -189,17 +231,17 @@ bot.on('message:dice', async (ctx) => {
   if (!ctx.message.dice || ctx.message.dice.emoji !== '🎰') return;
 
   const isComment = ctx.message.reply_to_message || ctx.message.is_topic_message;
-  if (!isComment) return;
-
-  const userId = ctx.from.id;
   const threadId = getThreadId(ctx);
-  const verifyKey = `${userId}_${threadId}`;
+  const userId = ctx.from.id;
 
-  // မည်သည့် Post Thread မဆို Comment တွင် Screenshot မပို့ဘဲ တိုက်ရိုက် Spin လှည့်ပါက စစ်ဆေးခြင်း
-  if (!verifiedUsers.has(verifyKey)) {
+  // သက်ဆိုင်ရာ Post Thread အောက် မဟုတ်ပါက သို့မဟုတ် Verification မရှိသေးပါက စစ်ဆေးခြင်း
+  const verified = threadId ? await isUserVerified(userId, threadId) : false;
+
+  if (!isComment || !threadId || !verified) {
     const chatUsername = ctx.chat.username;
-    const postLink = chatUsername && threadId && threadId !== 'default'
-      ? `https://t.me/${chatUsername}/${threadId}`
+    const targetPostId = threadId || 'default';
+    const postLink = chatUsername && targetPostId !== 'default'
+      ? `https://t.me/${chatUsername}/${targetPostId}`
       : `https://t.me/Rampage528`;
 
     const warningText = `⚠️ <b>Proof Verification Required!</b>\n\n` +

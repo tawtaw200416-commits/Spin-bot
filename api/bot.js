@@ -38,14 +38,18 @@ bot.catch((err) => {
   console.error('Error in bot:', err);
 });
 
-// Helper Function to Delete Message Later (Default 5 seconds)
+// Helper Function to Delete Message Later (Guaranteed deletion with context fallback)
 const deleteMessageLater = (ctx, chatId, messageId, delay = 5000) => {
   const promise = (async () => {
     await sleep(delay);
     try {
-      await ctx.api.deleteMessage(chatId, messageId);
+      await bot.api.deleteMessage(chatId, messageId);
     } catch (e) {
-      console.error('Delete message failed:', e);
+      try {
+        await ctx.api.deleteMessage(chatId, messageId);
+      } catch (err) {
+        console.error('Delete message failed:', err);
+      }
     }
   })();
 
@@ -261,7 +265,7 @@ bot.on('message:dice', async (ctx) => {
     return;
   }
 
-  // If verified, process spin results (unlimited spins allowed on this post)
+  // If verified, process spin results and correctly accumulate balance
   const diceValue = ctx.message.dice.value;
   let replyText = '';
   const winCombination = getSlotResult(diceValue);
@@ -274,7 +278,7 @@ bot.on('message:dice', async (ctx) => {
       .eq('telegram_id', userId)
       .maybeSingle();
 
-    let currentBalance = user && user.balance ? parseFloat(user.balance) : 0;
+    let currentBalance = user && user.balance !== null && user.balance !== undefined ? parseFloat(user.balance) : 0;
     let newBalance = currentBalance;
 
     if (reward > 0) {

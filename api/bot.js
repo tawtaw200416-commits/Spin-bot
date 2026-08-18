@@ -121,7 +121,7 @@ bot.command('broadcast', async (ctx) => {
     await ctx.api.editMessageText(
       ctx.chat.id, 
       statusMsg.message_id, 
-      `✅ <b>Broadcast ပြီးစီးပါပြီ!</b>\n\n📤 ပို့ဆောင်နိုင်သူ - ${successCount} ဦးနှင့် ❌ မပို့နိုင်သူ - ${failCount} ဦး`, 
+      `✅ <b>Broadcast ပြီးစီးပါပြီ!</b>\n\n📤 ပို့ဆောင်နိုင်သူ - ${successCount} ဦး\n❌ မပို့နိုင်သူ - ${failCount} ဦး`, 
       { parse_mode: 'HTML' }
     );
 
@@ -132,7 +132,7 @@ bot.command('broadcast', async (ctx) => {
 });
 
 // ==========================================
-// 4. Handle Photo (Proof Verification for Main Post)
+// 4. Handle Photo (Comment ထဲတွင် ပုံဖြင့် Proof တင်စစ်ဆေးခြင်း)
 // ==========================================
 bot.on('message:photo', async (ctx) => {
   const isComment = ctx.message.reply_to_message || ctx.message.is_topic_message;
@@ -140,14 +140,13 @@ bot.on('message:photo', async (ctx) => {
 
   const userId = ctx.from.id;
   const rawUsername = ctx.from.username || ctx.from.first_name || `ID: ${userId}`;
-  const displayName = ctx.from.username ? `@${ctx.from.username}` : rawUsername;
 
-  // ပို့လိုက်သော Comment သို့မဟုတ် Reply လုပ်ထားသည့် Main Post ၏ စာသားကို ယူစစ်ဆေးခြင်း
+  // User တင်လိုက်သော ပုံနှင့်တွဲလျက် Reply လုပ်ထားသည့် Main Post ၏ စာသားကို တိုက်ဆိုင်စစ်ဆေးခြင်း
   const repliedMessage = ctx.message.reply_to_message;
   const postCaption = repliedMessage?.text || repliedMessage?.caption || '';
 
-  // Main Post တွင် ပါရမည့် သက်ဆိုင်ရာ သတ်မှတ်စာသား (ဥပမာ - WORLD BEST CRYPTO သို့မဟုတ် လိုအပ်သော Keywords များ)
-  // လိုအပ်ပါက မိမိတို့၏ Main Post စာသားအလိုက် ထပ်မံဖြည့်စွက်နိုင်ပါသည်။
+  // Main Post တွင် ပါရှိရမည့် သက်ဆိုင်ရာ ခေါင်းစဉ်/စာသား (ဥပမာ - WORLD BEST CRYPTO)
+  // လိုအပ်ပါက မိမိတို့၏ Post စာသားအလိုက် ဤနေရာတွင် အစားထိုးနိုင်ပါသည်
   const expectedKeyword = "WORLD BEST CRYPTO"; 
   const hasValidText = postCaption.includes(expectedKeyword) || postCaption.length > 0;
 
@@ -164,7 +163,7 @@ bot.on('message:photo', async (ctx) => {
   }
 
   try {
-    // စာသားနှင့် ပုံမှန်ကန်ပါက Database တွင် Verified = true ဟု မှတ်တမ်းတင်မည်
+    // မှန်ကန်ပါက Database တွင် Verified = true ဟု မှတ်တမ်းတင်မည်
     await supabase.from('users').upsert({
       telegram_id: userId,
       username: rawUsername,
@@ -187,7 +186,7 @@ bot.on('message:photo', async (ctx) => {
 });
 
 // ==========================================
-// 5. Slot Machine Dice Handling (With Verification Check)
+// 5. Slot Machine Dice Handling (With Verification & Auto-Delete Check)
 // ==========================================
 bot.on('message:dice', async (ctx) => {
   if (!ctx.message.dice || ctx.message.dice.emoji !== '🎰') return;
@@ -207,15 +206,22 @@ bot.on('message:dice', async (ctx) => {
       .eq('telegram_id', userId)
       .maybeSingle();
 
-    // အကယ်၍ Verify မလုပ်ရသေးပါက (သို့မဟုတ်) Database ထဲ မရှိသေးပါက သတိပေးစာပို့မည်
+    // အကယ်၍ Verify မလုပ်ရသေးပါက (သို့မဟုတ်) ပုံမတင်ရသေးပါက
     if (!user || !user.is_verified) {
+      // 1. တင်ထားသော Dice (Spin) မက်ဆေ့ခ်ျကို ချက်ချင်းပြန်ဖျက်မည်
+      try {
+        await ctx.api.deleteMessage(ctx.chat.id, ctx.message.message_id);
+      } catch (e) {
+        console.error("Failed to delete unverified dice message:", e);
+      }
+
+      // 2. သတိပေးစာ ပို့မည်
       const warningText = `⚠️ <b>Proof Verification Required!</b>\n\n` +
         `Please react (❤️/👍) to the main post and upload the screenshot proof first.\n\n` +
         `🔗 <b>Target Post:</b> <a href="https://t.me/Rampage528">Click Here To View Post</a>`;
 
       const sentWarning = await ctx.reply(warningText, {
         parse_mode: 'HTML',
-        reply_to_message_id: ctx.message.message_id,
         disable_web_page_preview: true
       });
       deleteMessageLater(ctx, ctx.chat.id, sentWarning.message_id, 10000);

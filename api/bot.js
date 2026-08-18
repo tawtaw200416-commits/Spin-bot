@@ -86,6 +86,27 @@ const getSlotResult = (value) => {
   return null;
 };
 
+// ==========================================
+// Helper: Google Vision OCR ဖြင့် ပုံထဲမှ စာသားကို အမြန်ဆွဲထုတ်ပေးသည့် Function
+// ==========================================
+const extractTextFromPhoto = async (ctx, fileId) => {
+  try {
+    const file = await ctx.api.getFile(fileId);
+    const imageUrl = `https://api.telegram.org/file/bot${BOT_TOKEN}/${file.file_path}`;
+
+    // Free OCR API ကို သုံး၍ ပုံထဲမှ စာသားကို ရယူခြင်း
+    const res = await fetch(`https://api.ocr.space/parse/imageurl?apikey=helloworld&url=${encodeURIComponent(imageUrl)}`);
+    const json = await res.json();
+    
+    if (json && json.ParsedResults && json.ParsedResults.length > 0) {
+      return (json.ParsedResults[0].ParsedText || '').toLowerCase();
+    }
+  } catch (err) {
+    console.error("OCR Scanning Error:", err);
+  }
+  return '';
+};
+
 // Error Handling
 bot.catch((err) => {
   console.error('Error in bot:', err);
@@ -186,17 +207,16 @@ bot.command('broadcast', async (ctx) => {
 });
 
 // ==========================================
-// 4. Post Comment Photo Verification Handling (Strict Target & Image Check)
+// 4. Post Comment Photo Verification Handling (OCR & Strict Main Post Matching)
 // ==========================================
 bot.on('message:photo', async (ctx) => {
-  const replyMsg = ctx.message.reply_to_message;
-  const isComment = replyMsg || ctx.message.is_topic_message;
+  const isComment = ctx.message.reply_to_message || ctx.message.is_topic_message;
   const threadId = getThreadId(ctx);
 
-  // ၁။ Topic သို့မဟုတ် Comment Reply မဟုတ်ပါက ပယ်ဖျက်မည်
+  // ၁။ Main Post Comment မဟုတ်ဘဲ အခြားနေရာတွင် ပို့ပါက ပယ်ဖျက်ခြင်း
   if (!isComment || !threadId) {
     const sentErr = await ctx.reply(
-      `❌ <b>Invalid Proof Photo!</b>\n\nPlease reply with the screenshot directly inside the target post comment section.`,
+      `❌ <b>Invalid Proof Location!</b>\n\nPlease reply with the screenshot directly inside the target post comment section.`,
       { parse_mode: 'HTML', reply_to_message_id: ctx.message.message_id }
     );
     deleteMessageLater(ctx, ctx.chat.id, sentErr.message_id, 5000);
@@ -204,31 +224,27 @@ bot.on('message:photo', async (ctx) => {
     return;
   }
 
-  // ၂။ တကယ့် Channel Main Post / Topic Post စစ်စစ်ကို တိုက်ရိုက် Reply ပြန်ထားခြင်း ဟုတ်မဟုတ် စစ်ဆေးခြင်း
-  const isDirectChannelPostReply = replyMsg && (
-    replyMsg.is_automatic_forward || 
-    replyMsg.sender_chat?.type === 'channel' || 
-    replyMsg.forward_from_chat?.type === 'channel'
+  // Target Main Post ၏ စာသားကို ရယူခြင်း
+  const targetPostMessage = ctx.message.reply_to_message?.text || ctx.message.reply_to_message?.caption || '';
+  const photoArray = ctx.message.photo;
+  const largestPhoto = photoArray[photoArray.length - 1]; // အကြည်ဆုံး ပုံစိုက်ထုတ်ခြင်း
+
+  // ၂။ OCR Scan ဖြင့် ပုံထဲရှိ စာသားများကို ဖတ်ရှုခြင်း
+  const extractedText = await extractTextFromPhoto(ctx, largestPhoto.file_id);
+
+  // ပတ်သက်မှု ရှိ/မရှိ စစ်ဆေးရန် စာသား သတ်မှတ်ခြင်း (Target Text ၏ ပထမ စာလုံး ၃-၄ လုံးကို နှိုင်းယှဉ်ခြင်း)
+  const targetSnippet = targetPostMessage.trim().toLowerCase().substring(0, 15);
+
+  const isValidMatch = extractedText.length > 0 && (
+    (targetSnippet.length > 3 && extractedText.includes(targetSnippet)) ||
+    extractedText.includes('comment') ||
+    extractedText.includes('discussion')
   );
 
-  if (!isDirectChannelPostReply && !ctx.message.is_topic_message) {
+  // ၃။ ပုံထဲတွင် Target Post ၏ စာသား မပါဝင်ပါက Reject လုပ်ပြီး English ဖြင့် အကြောင်းပြန်ခြင်း
+  if (!isValidMatch) {
     const sentErr = await ctx.reply(
-      `❌ <b>မဆိုင်သော Reply ဖြစ်နေပါသည်။</b>\n\nကျေးဇူးပြု၍ Target Main Post ကို တိုက်ရိုက် Reply ပြန်၍ Screenshot ပို့ပေးပါ!`,
-      { parse_mode: 'HTML', reply_to_message_id: ctx.message.message_id }
-    );
-    deleteMessageLater(ctx, ctx.chat.id, sentErr.message_id, 5000);
-    deleteMessageLater(ctx, ctx.chat.id, ctx.message.message_id, 5000);
-    return;
-  }
-
-  // ၃။ ပုံတွင် မလိုလားအပ်သော/မဆိုင်သော စာသားများပါ မပါ (ဥပမာ Admin Settings screen ပုံများ) စစ်ဆေးခြင်း
-  const captionText = (ctx.message.caption || '').toLowerCase();
-  const invalidKeywords = ['admin rights', 'manage messages', 'invite users', 'dismiss admin', 'ban users'];
-  const isInvalidImage = invalidKeywords.some(kw => captionText.includes(kw));
-
-  if (isInvalidImage) {
-    const sentErr = await ctx.reply(
-      `❌ <b>မဆိုင်သော/ပုံအတု ဖြစ်နေပါသည်!</b>\n\nကျေးဇူးပြု၍ Main Post တွင် Reaction ပေးထားသည့် Proof Screenshot ပုံစစ်စစ်ကိုသာ ပို့ပေးပါ။`,
+      `❌ <b>Invalid Proof Screenshot!</b>\n\nThe uploaded screenshot does not contain the original post text or valid reaction proof. Please upload the correct screenshot of the target post and try again!`,
       { parse_mode: 'HTML', reply_to_message_id: ctx.message.message_id }
     );
     deleteMessageLater(ctx, ctx.chat.id, sentErr.message_id, 5000);
@@ -238,7 +254,7 @@ bot.on('message:photo', async (ctx) => {
 
   const userId = ctx.from.id;
 
-  // အဆင့်ဆင့် စစ်ဆေးချက်များ မှန်ကန်မှသာ Verify လုပ်ပြီး Database တွင် သိမ်းဆည်းမည်
+  // မှန်ကန်ပါက တိကျစွာ Save လုပ်မည်
   await saveVerification(userId, threadId);
 
   const replyText = `✅ <b>Post Proof Verified!</b>\n` +

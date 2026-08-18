@@ -172,11 +172,11 @@ bot.command('broadcast', async (ctx) => {
   }
 });
 
-// 4. Photo Verification Handling (Stores verification status for the specific post & deletes unverified photos)
+// 4. Photo Verification Handling (Stores exact comment/post ID and deletes unverified photos instantly)
 bot.on('message:photo', async (ctx) => {
   const isComment = ctx.message.reply_to_message || ctx.message.is_topic_message;
   
-  // အကယ်၍ comment အပြင်ဘက်မှာ ပို့ရင် (သို့မဟုတ်) verify မဖြစ်ရင် ပုံကို တန်းဖျက်မယ်
+  // အကယ်၍ comment ထဲမှာ မဟုတ်ဘဲ အပြင်မှာ ပို့ရင် ပုံကို တန်းဖျက်မယ်
   if (!isComment) {
     try { await ctx.api.deleteMessage(ctx.chat.id, ctx.message.message_id); } catch (e) {}
     return;
@@ -199,7 +199,11 @@ bot.on('message:photo', async (ctx) => {
     const errorMsg = await ctx.reply(
       `❌ <b>Invalid Verification!</b>\n` +
       `Your screenshot was rejected because the caption is incorrect! Please include caption <code>WORLD BEST CRYPTO</code> and reaction (❤️ / 👍).`,
-      { parse_mode: 'HTML' }
+      { 
+        parse_mode: 'HTML',
+        reply_to_message_id: ctx.message.reply_to_message ? ctx.message.reply_to_message.message_id : undefined,
+        message_thread_id: ctx.message.message_thread_id
+      }
     );
     deleteMessageLater(ctx, ctx.chat.id, errorMsg.message_id, 5000);
     return;
@@ -214,7 +218,7 @@ bot.on('message:photo', async (ctx) => {
 
     const currentBalance = existingUser && existingUser.balance !== null ? parseFloat(existingUser.balance) : 0;
 
-    // Save user verification status along with the exact target post identifier
+    // Save user verification status along with the target post identifier
     await supabase.from('users').upsert({
       telegram_id: userId,
       username: rawUsername,
@@ -228,17 +232,18 @@ bot.on('message:photo', async (ctx) => {
 
   const successMsg = await ctx.reply(
     `✅ <b>Verification Successful, ${displayName}!</b>\n` +
-    `Your screenshot is verified for this post. You can now spin freely here!`,
+    `Your screenshot is verified for this comment. You can now spin freely right here!`,
     { 
       parse_mode: 'HTML',
-      reply_to_message_id: ctx.message.message_id
+      reply_to_message_id: ctx.message.reply_to_message ? ctx.message.reply_to_message.message_id : undefined,
+      message_thread_id: ctx.message.message_thread_id
     }
   );
   
   deleteMessageLater(ctx, ctx.chat.id, successMsg.message_id, 5000);
 });
 
-// 5. Slot Machine Dice Handling (Deletes spin if unverified or wrong post, permits if verified)
+// 5. Slot Machine Dice Handling (Deletes unverified/wrong-post spin immediately & replies in that comment thread)
 bot.on('message:dice', async (ctx) => {
   if (!ctx.message.dice || ctx.message.dice.emoji !== '🎰') return;
 
@@ -246,7 +251,7 @@ bot.on('message:dice', async (ctx) => {
   
   const replyOptions = { 
     parse_mode: 'HTML',
-    reply_to_message_id: ctx.message.message_id
+    reply_to_message_id: ctx.message.reply_to_message ? ctx.message.reply_to_message.message_id : undefined
   };
   
   if (ctx.message.message_thread_id) {
@@ -296,7 +301,7 @@ bot.on('message:dice', async (ctx) => {
     console.error("Check verification error:", e);
   }
 
-  // If user has not verified or verification doesn't match this post, delete spin immediately
+  // If user has not verified or verification doesn't match this exact comment/post, delete spin immediately
   if (!isVerifiedForThisPost) {
     try {
       await ctx.api.deleteMessage(ctx.chat.id, ctx.message.message_id);
@@ -306,7 +311,7 @@ bot.on('message:dice', async (ctx) => {
 
     const postLink = getPostLink(ctx);
     const warningText = `⚠️ <b>Proof Verification Required!</b>\n\n` +
-      `Your spin was deleted because you haven't verified for this post yet! Please send a screenshot reply with reaction (❤️ / 👍) and caption <code>WORLD BEST CRYPTO</code> first!\n\n` +
+      `Your spin was deleted because you haven't verified for this comment yet! Please send a screenshot reply with reaction (❤️ / 👍) and caption <code>WORLD BEST CRYPTO</code> first!\n\n` +
       `🔗 <b>Target Post:</b> <a href="${postLink}">Click Here To View Post</a>`;
 
     const warningMsg = await ctx.reply(warningText, { 

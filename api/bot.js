@@ -95,7 +95,7 @@ bot.command('spin', async (ctx) => {
 });
 
 // ==========================================
-// 3. Admin (1793453606) သီးသန့် Broadcast ပို့မည့် Command
+// 3. Admin သီးသန့် Broadcast ပို့မည့် Command
 // ==========================================
 bot.command('broadcast', async (ctx) => {
   const userId = ctx.from?.id;
@@ -167,6 +167,9 @@ bot.on('message:photo', async (ctx) => {
       reply_to_message_id: ctx.message.message_id
     }
   );
+  
+  // ပုံတင်သည့် User ၏ မက်ဆေ့ချ်နှင့် Bot ၏ အတည်ပြုချက် မက်ဆေ့ချ် နှစ်ခုစလုံးကို 5 စက္ကန့်ဖြင့် ဖျက်မည်
+  deleteMessageLater(ctx, ctx.chat.id, ctx.message.message_id, 5000);
   deleteMessageLater(ctx, ctx.chat.id, successMsg.message_id, 5000);
 });
 
@@ -180,6 +183,7 @@ bot.on('message:dice', async (ctx) => {
   const repliedMessage = ctx.message.reply_to_message;
   const hasUserSentPhotoBefore = repliedMessage && repliedMessage.from && repliedMessage.from.id === ctx.from.id && repliedMessage.photo;
 
+  // Verify မလုပ်ရသေးဘဲ Spin လှည့်လျှင် သတိပေးပြီး 5s အတွက် မက်ဆေ့ချ်နှစ်ခုစလုံးကို ဖျက်မည်
   if (!hasUserSentPhotoBefore) {
     const postLink = getPostLink(ctx);
     const warningText = `⚠️ <b>Proof Verification Required!</b>\n\n` +
@@ -191,6 +195,8 @@ bot.on('message:dice', async (ctx) => {
       disable_web_page_preview: true,
       reply_to_message_id: ctx.message.message_id 
     });
+
+    deleteMessageLater(ctx, ctx.chat.id, ctx.message.message_id, 5000);
     deleteMessageLater(ctx, ctx.chat.id, warningMsg.message_id, 5000);
     return;
   }
@@ -263,6 +269,9 @@ bot.on('message:dice', async (ctx) => {
   }
 
   const sentMsg = await ctx.reply(replyText, replyOptions);
+  
+  // Verify အောင်မြင်ပြီး Spin လှည့်သောအခါ User ၏ Spin မက်ဆေ့ချ်နှင့် Bot ၏ ရလဒ်စာ နှစ်ခုစလုံးကို 5 စက္ကန့်ပြည့်လျှင် ဖျက်မည်
+  deleteMessageLater(ctx, ctx.chat.id, ctx.message.message_id, 5000);
   deleteMessageLater(ctx, ctx.chat.id, sentMsg.message_id, 5000);
 });
 

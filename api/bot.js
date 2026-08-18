@@ -12,7 +12,7 @@ const bot = new Bot(BOT_TOKEN);
 // Sleep Helper Function
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-// Telegram Slot Machine ၏ 777 အပါအဝင် တရားဝင် ရလဒ်များအားလုံး တိကျစွာ တွက်ချက်သည့် Function
+// Telegram Slot Machine Result Calculation
 const getSlotResult = (value) => {
   let v = value - 1;
   let r1 = v % 4;             
@@ -38,7 +38,7 @@ bot.catch((err) => {
   console.error('Error in bot:', err);
 });
 
-// Delay ဖြင့် Background မှာ Message ဖျက်ပေးမည့် Helper Function
+// Helper Function to Delete Message Later
 const deleteMessageLater = (ctx, chatId, messageId, delay = 5000) => {
   const promise = (async () => {
     await sleep(delay);
@@ -90,16 +90,14 @@ bot.command('start', async (ctx) => {
 bot.command('spin', async (ctx) => {
   const postLink = getPostLink(ctx);
   const promptText = `⚠️ <b>Proof Verification Required!</b>\n\n` +
-    `ကျေးဇူးပြု၍ သက်ဆိုင်ရာ Post တွင် အသဲ (❤️) သို့မဟုတ် လက်မ (👍) ပေးပြီး ပုံမှန် Screenshot ဖြင့် Reply ပြန်ပေးပါရန်။\n\n` +
+    `Please react to the original channel post (❤️ / 👍) and reply directly to that post with your screenshot!\n\n` +
     `🔗 <b>Target Post:</b> <a href="${postLink}">Click Here To View Post</a>`;
 
   const sent = await ctx.reply(promptText, { parse_mode: 'HTML', disable_web_page_preview: true });
   deleteMessageLater(ctx, ctx.chat.id, sent.message_id, 10000);
 });
 
-// ==========================================
-// 3. Admin သီးသန့် Broadcast ပို့မည့် Command
-// ==========================================
+// 3. Admin Broadcast Command
 bot.command('broadcast', async (ctx) => {
   const userId = ctx.from?.id;
   
@@ -110,7 +108,7 @@ bot.command('broadcast', async (ctx) => {
   const customMessage = ctx.match;
 
   if (!customMessage) {
-    return ctx.reply('⚠️ ကျေးဇူးပြု၍ ပို့လိုသော စာသားကို ထည့်ပါ။\n\n<b>ပုံစံ -</b> <code>/broadcast your_message_here</code>', { parse_mode: 'HTML' });
+    return ctx.reply('⚠️ Please provide a message.\n\n<b>Format:</b> <code>/broadcast your_message_here</code>', { parse_mode: 'HTML' });
   }
 
   try {
@@ -119,10 +117,10 @@ bot.command('broadcast', async (ctx) => {
       .select('telegram_id');
 
     if (error || !users || users.length === 0) {
-      return ctx.reply('❌ Database မှ User စာရင်းများကို ဆွဲထုတ်၍ မရပါ (သို့) User မရှိပါ။');
+      return ctx.reply('❌ No users found in database.');
     }
 
-    const statusMsg = await ctx.reply(`🚀 User ${users.length} ဦးထံသို့ စတင်ပို့ဆောင်နေပါပြီ...`);
+    const statusMsg = await ctx.reply(`🚀 Broadcasting to ${users.length} users...`);
 
     let successCount = 0;
     let failCount = 0;
@@ -143,17 +141,17 @@ bot.command('broadcast', async (ctx) => {
     await ctx.api.editMessageText(
       ctx.chat.id, 
       statusMsg.message_id, 
-      `✅ <b>Broadcast ပြီးစီးပါပြီ!</b>\n\n📤 ပို့ဆောင်နိုင်သူ - ${successCount} ဦး\n❌ မပို့နိုင်သူ - ${failCount} ဦး`, 
+      `✅ <b>Broadcast Completed!</b>\n\n📤 Success - ${successCount}\n❌ Failed - ${failCount}`, 
       { parse_mode: 'HTML' }
     );
 
   } catch (err) {
     console.error("Broadcast Error:", err);
-    await ctx.reply('❌ Broadcast လုပ်ရာတွင် အမှားအယွင်း ရှိနေပါသည်။');
+    await ctx.reply('❌ Error occurred during broadcast.');
   }
 });
 
-// 4. Photo Verification Handling (Strict Post Text Check)
+// 4. Strict Photo Verification Handling
 bot.on('message:photo', async (ctx) => {
   const isComment = ctx.message.reply_to_message || ctx.message.is_topic_message;
   if (!isComment) return;
@@ -165,18 +163,20 @@ bot.on('message:photo', async (ctx) => {
   const repliedMessage = ctx.message.reply_to_message;
   const repliedText = repliedMessage ? (repliedMessage.text || repliedMessage.caption || '') : '';
 
-  // 1. Bot ရဲ့ Prompt Message ကို Reply ပေးထားခြင်း ဟုတ်မဟုတ် စစ်ဆေးခြင်း
-  const isBotPrompt = repliedText.includes('Proof Verification Required') || repliedText.includes('Target Post');
+  // စစ်ဆေးချက် ၁ - Bot ရဲ့ Prompt Message ကို Reply ပေးထားခြင်း ဟုတ်မဟုတ် စစ်မည် (မှားနေလျှင် ပယ်မည်)
+  const isBotPrompt = repliedText.includes('Proof Verification Required') || 
+                      repliedText.includes('Target Post') || 
+                      repliedText.includes('Verification Successful');
 
-  // 2. တရားဝင် မူရင်း Channel Post ၏ စာသားအစစ်အမှန် ပါဝင်ရမည် (သင့် Channel Post ရဲ့ Keywords များနှင့် အံဝင်ခွင်ကျ ပြင်ဆင်နိုင်သည်)
+  // စစ်ဆေးချက် ၂ - မူရင်း Channel Post ၏ အဓိကစာသား အစစ်အမှန် ပါဝင်ရမည်
   const isRealChannelPost = repliedText.includes('WORLD BEST CRYPTO') || 
                             (repliedText.includes('game link') && repliedText.includes('invite code'));
 
-  // အကယ်၍ Bot Prompt ကို Reply ပေးထားလျှင် (သို့မဟုတ်) မူရင်း Post အစစ်အမှန် မဟုတ်လျှင် (KBZ slip ကဲ့သို့ ပုံအမှားများ) တားဆီးမည်
+  // အကယ်၍ Bot Prompt ကို Reply ပေးမိပါက သို့မဟုတ် မူရင်း Post အစစ်မဟုတ်ပါက တားဆီးမည်
   if (isBotPrompt || !isRealChannelPost) {
     const errorMsg = await ctx.reply(
-      `❌ <b>Invalid Screenshot!</b>\n` +
-      `ကျေးဇူးပြု၍ မူရင်း Channel Post ကို တိုက်ရိုက် Reply ပေးပြီးမှသာ မှန်ကန်သော Screenshot ပုံကို တင်ပေးပါ။`,
+      `❌ <b>Invalid Verification!</b>\n` +
+      `You must reply directly to the <b>original channel post</b>, not to the bot's warning message!`,
       { parse_mode: 'HTML', reply_to_message_id: ctx.message.message_id }
     );
     deleteMessageLater(ctx, ctx.chat.id, ctx.message.message_id, 5000);
@@ -184,7 +184,7 @@ bot.on('message:photo', async (ctx) => {
     return;
   }
 
-  // စစ်ဆေးမှု အောင်မြင်ပါက Supabase တွင် is_verified = true လို့ မှတ်ပေးမည်
+  // အကယ်၍ အားလုံးမှန်ကန်မှသာ Supabase တွင် is_verified = true လို့ မှတ်မည်
   try {
     await supabase.from('users').upsert({
       telegram_id: userId,
@@ -197,7 +197,7 @@ bot.on('message:photo', async (ctx) => {
 
   const successMsg = await ctx.reply(
     `✅ <b>Verification Successful, ${displayName}!</b>\n` +
-    `သင့် Screenshot အောင်မြင်ပါသည်။ ယခု 🎰 ကို အသုံးပြု၍ Spin နိုင်ပါပြီ။`,
+    `Your screenshot is verified. You can now use the 🎰 spin!`,
     { 
       parse_mode: 'HTML',
       reply_to_message_id: ctx.message.message_id
@@ -218,7 +218,7 @@ bot.on('message:dice', async (ctx) => {
   const rawUsername = ctx.from.username || ctx.from.first_name || `ID: ${userId}`;
   const displayName = ctx.from.username ? `@${ctx.from.username}` : rawUsername;
 
-  // Supabase မှ User ၏ Verification Status ကို စစ်ဆေးမည်
+  // Check verification status from Supabase
   let isVerified = false;
   try {
     const { data: userRecord } = await supabase
@@ -234,11 +234,11 @@ bot.on('message:dice', async (ctx) => {
     console.error("Check verification error:", e);
   }
 
-  // အကယ်၍ Verify မလုပ်ရသေးပါက Spin ကို တန်းဖျက်မည်ပြီး သတိပေးစာ ပို့မည်
+  // If not verified, delete spin and send warning
   if (!isVerified) {
     const postLink = getPostLink(ctx);
     const warningText = `⚠️ <b>Proof Verification Required!</b>\n\n` +
-      `ကျေးဇူးပြု၍ သက်ဆိုင်ရာ Post တွင် အသဲ (❤️) သို့မဟုတ် လက်မ (👍) ပေးပြီး Screenshot အရင်တင်ပေးပါရန်။\n\n` +
+      `Please react to the original post (❤️ / 👍) and send your screenshot reply first!\n\n` +
       `🔗 <b>Target Post:</b> <a href="${postLink}">Click Here To View Post</a>`;
 
     const warningMsg = await ctx.reply(warningText, { 
@@ -247,13 +247,12 @@ bot.on('message:dice', async (ctx) => {
       reply_to_message_id: ctx.message.message_id 
     });
 
-    // Spin ပစ်လိုက်တဲ့ Dice ရော၊ Bot ရဲ့ သတိပေးစာပါ ၅ စက္ကန့်အတွင်း အလိုအလျောက် ဖျက်မည်
     deleteMessageLater(ctx, ctx.chat.id, ctx.message.message_id, 5000);
     deleteMessageLater(ctx, ctx.chat.id, warningMsg.message_id, 5000);
     return;
   }
 
-  // Verification အောင်မြင်ပြီးမှသာ Spin ရလဒ်တွက်ချက်ပြီး Balance ပေါင်းပေးမည်
+  // If verified, process spin results
   const diceValue = ctx.message.dice.value;
   let replyText = '';
   const winCombination = getSlotResult(diceValue);
@@ -277,7 +276,7 @@ bot.on('message:dice', async (ctx) => {
       telegram_id: userId,
       username: rawUsername,
       balance: newBalance,
-      is_verified: false // တစ်ကြိမ် Spin ပြီးပါက နောက်တစ်ခါအတွက် ထပ် verify လုပ်ရန် ပြန်ပိတ်မည် (လိုချင်မှ ထားနိုင်သည်)
+      is_verified: false // Reset verification after spin if you want them to verify every time
     }, { onConflict: 'telegram_id' });
 
     if (winCombination) {

@@ -72,7 +72,7 @@ const isCommentSection = (ctx) => {
   return isReply || isTopic || isAutoForward;
 };
 
-// Target Post ID ထုတ်ယူမည့် Helper (ပိုမိုလွယ်ကူတိကျစေရန်)
+// Target Post ID ထုတ်ယူမည့် Helper (ပိုမိုတိကျစေရန်)
 const getTargetPostId = (ctx) => {
   const replyTo = ctx.message?.reply_to_message;
   if (replyTo) {
@@ -240,7 +240,7 @@ bot.on('message:photo', async (ctx) => {
 
     const currentBalance = existingUser && existingUser.balance !== null ? parseFloat(existingUser.balance) : 0;
 
-    // Database တွင် User အား Verified ဖြစ်ကြောင်း မှတ်သားမည်
+    // Database တွင် User အား ယခု Post အတွက် Verified ဖြစ်ကြောင်း မှတ်သားမည်
     await supabase.from('users').upsert({
       telegram_id: userId,
       username: rawUsername,
@@ -254,7 +254,7 @@ bot.on('message:photo', async (ctx) => {
 
   const successMsg = await ctx.reply(
     `✅ <b>Complete Verified User: ${displayName}!</b>\n` +
-    `Your screenshot is successfully verified. You can now spin freely in this post thread without restriction! 🎰`,
+    `Your screenshot is successfully verified for this post. You can now spin freely here! 🎰`,
     { 
       parse_mode: 'HTML',
       reply_to_message_id: ctx.message.reply_to_message ? ctx.message.reply_to_message.message_id : undefined,
@@ -274,26 +274,29 @@ bot.on('message:dice', async (ctx) => {
   const rawUsername = ctx.from.username || ctx.from.first_name || `ID: ${userId}`;
   const displayName = ctx.from.username ? `@${ctx.from.username}` : rawUsername;
 
-  let isVerified = false;
+  const currentSpinPostId = getTargetPostId(ctx);
+  let isVerifiedForThisPost = false;
 
   try {
     const { data: userRecord } = await supabase
       .from('users')
-      .select('is_verified, balance')
+      .select('is_verified, verified_post_id, balance')
       .eq('telegram_id', userId)
       .maybeSingle();
 
-    // အဓိက ပြင်ဆင်ချက် - Database ထဲတွင် User သည် is_verified: true ဖြစ်နေရုံဖြင့် ID တိုက်စစ်နေစရာမလိုဘဲ 
-    // မည်သည့်နေရာ (comment thread) တွင်မဆို spin လှည့်ခွင့် အပြည့်အဝပေးမည်
+    // User သည် verify လုပ်ထားပြီး၊ အခုလက်ရှိ Spin လှည့်နေသော Post ID သည် 
+    // Database ထဲက verified_post_id နှင့် တူညီမှသာ ေအာင်မြင်သည်ဟု သတ်မှတ်မည်
     if (userRecord && userRecord.is_verified === true) {
-      isVerified = true;
+      if (!userRecord.verified_post_id || userRecord.verified_post_id === currentSpinPostId) {
+        isVerifiedForThisPost = true;
+      }
     }
   } catch (e) {
     console.error("Check verification error:", e);
   }
 
-  // လုံးဝမ verify ရသေးသောသူများအတွက်သာ Spin ကိုဖျက်ပြီး ပုံပို့ခိုင်းမည်
-  if (!isVerified) {
+  // မ verify ရသေးလျှင် သို့မဟုတ် Post အသစ်ပြောင်းသွားလျှင် Spin ကိုဖျက်ပြီး ပုံပို့ရန် တောင်းဆိုမည်
+  if (!isVerifiedForThisPost) {
     try {
       await ctx.api.deleteMessage(ctx.chat.id, ctx.message.message_id);
     } catch (e) {
@@ -302,7 +305,7 @@ bot.on('message:dice', async (ctx) => {
 
     const postLink = getPostLink(ctx);
     const warningText = `⚠️ <b>Proof Verification Required!</b>\n\n` +
-      `Your spin was deleted because you haven't verified yet! Please send a screenshot reply with reaction (❤️ / 👍) and caption <code>WORLD BEST CRYPTO</code> first!\n\n` +
+      `Your spin was deleted because this is a new post or you haven't verified for this specific post yet! Please send a screenshot reply with reaction (❤️ / 👍) and caption <code>WORLD BEST CRYPTO</code> first!\n\n` +
       `🔗 <b>Target Post:</b> <a href="${postLink}">Click Here To View Post</a>`;
 
     const warningMsg = await ctx.reply(warningText, { 
@@ -316,7 +319,7 @@ bot.on('message:dice', async (ctx) => {
     return;
   }
 
-  // Verify ပြီးသားသူအတွက် Spin ကို မဖျက်ဘဲ ဆက်ကစားခွင့်ပေးပြီး Result တွက်ချက်ပေးမည်
+  // သက်ဆိုင်ရာ Post ထဲတွင် Verify ပြီးသားဖြစ်ပါက Spin ကို မဖျက်ဘဲ ရလဒ်တွက်ချက်ပေးမည်
   const diceValue = ctx.message.dice.value;
   let replyText = '';
   const winCombination = getSlotResult(diceValue);
@@ -340,7 +343,8 @@ bot.on('message:dice', async (ctx) => {
       telegram_id: userId,
       username: rawUsername,
       balance: newBalance,
-      is_verified: true
+      is_verified: true,
+      verified_post_id: currentSpinPostId
     }, { onConflict: 'telegram_id' });
 
     if (winCombination) {

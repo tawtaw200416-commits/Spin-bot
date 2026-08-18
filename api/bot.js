@@ -109,19 +109,31 @@ const deleteMessageLater = (ctx, chatId, messageId, delay = 5000) => {
   }
 };
 
-// Free Online OCR Helper Function (Vercel Serverless Safe)
-const checkImageWithOCR = async (imageUrl) => {
+// OCR API ဖြင့် ပုံထဲရှိ စာသားများကို သေချာ စစ်ဆေးသည့် Helper Function
+const verifyImageContent = async (fileUrl) => {
   try {
-    const response = await fetch(`https://api.ocr.space/parse/imageurl?apikey=helloworld&url=${encodeURIComponent(imageUrl)}`);
-    const result = await response.json();
+    const res = await fetch(`https://api.ocr.space/parse/imageurl?apikey=helloworld&url=${encodeURIComponent(fileUrl)}`);
+    const json = await res.json();
     
-    if (result && result.ParsedResults && result.ParsedResults.length > 0) {
-      return result.ParsedResults[0].ParsedText || '';
+    if (json && json.ParsedResults && json.ParsedResults.length > 0) {
+      const parsedText = (json.ParsedResults[0].ParsedText || '').toLowerCase();
+      
+      // မဆိုင်သော ပုံများ (ဥပမာ Admin Rights Screen) ပါနေပါက ငြင်းပယ်မည်
+      const invalidKeywords = ['admin rights', 'manage messages', 'invite users', 'dismiss admin', 'ban users'];
+      const isInvalid = invalidKeywords.some(kw => parsedText.includes(kw));
+
+      if (isInvalid) return false;
+
+      // Target Post နှင့် သက်ဆိုင်သော Keyword များ ပါမပါ စစ်ဆေးမည်
+      const validKeywords = ['bot', 'prepared', 'discussion', 'crypto', 'comments'];
+      const isValid = validKeywords.some(kw => parsedText.includes(kw));
+
+      return isValid;
     }
   } catch (err) {
-    console.error("OCR Fetch Error:", err);
+    console.error("OCR Verification Error:", err);
   }
-  return '';
+  return false;
 };
 
 // 1. /start Command
@@ -201,13 +213,14 @@ bot.command('broadcast', async (ctx) => {
 });
 
 // ==========================================
-// 4. Post Comment Photo Verification Handling (Strict Anti-Fake Logic)
+// 4. Post Comment Photo Verification Handling (Strict Image & Target Post Checking)
 // ==========================================
 bot.on('message:photo', async (ctx) => {
-  const isComment = ctx.message.reply_to_message || ctx.message.is_topic_message;
+  const replyMsg = ctx.message.reply_to_message;
+  const isComment = replyMsg || ctx.message.is_topic_message;
   const threadId = getThreadId(ctx);
 
-  // ၁။ Target Post Comment မဟုတ်ဘဲ ပြင်ပတွင် ပို့သော ပုံများကို ငြင်းပယ်ခြင်း
+  // ၁။ Thread/Comment အောက်တွင် Direct Reply ပို့ခြင်း မဟုတ်ပါက ငြင်းပယ်ခြင်း
   if (!isComment || !threadId) {
     const sentErr = await ctx.reply(
       `❌ <b>Invalid Proof Photo!</b>\n\nPlease reply with the screenshot directly inside the target post comment section.`,
@@ -218,31 +231,31 @@ bot.on('message:photo', async (ctx) => {
     return;
   }
 
-  const userId = ctx.from.id;
+  // ၂။ တကယ့် Channel Main Post ကို တိုက်ရိုက် Reply ပြန်ထားခြင်း ဟုတ်မဟုတ် စစ်ဆေးခြင်း
+  const isDirectReplyToChannelPost = replyMsg && (replyMsg.sender_chat || replyMsg.forward_from_chat || replyMsg.is_automatic_forward);
 
+  if (!isDirectReplyToChannelPost && !ctx.message.is_topic_message) {
+    const sentErr = await ctx.reply(
+      `❌ <b>Invalid Reply Target!</b>\n\nကျေးဇူးပြု၍ Target Main Post ကို တိုက်ရိုက် Reply ပြန်၍ Screenshot ပို့ပေးပါ။`,
+      { parse_mode: 'HTML', reply_to_message_id: ctx.message.message_id }
+    );
+    deleteMessageLater(ctx, ctx.chat.id, sentErr.message_id, 5000);
+    deleteMessageLater(ctx, ctx.chat.id, ctx.message.message_id, 5000);
+    return;
+  }
+
+  // ၃။ ပို့လိုက်သော Image ၏ Content ကို OCR ဖြင့် တိကျစွာ စစ်ဆေးခြင်း
   try {
-    // ၂။ ပုံကို Telegram API မှတစ်ဆင့် Direct Link ယူခြင်း
-    const photos = ctx.message.photo;
-    const photo = photos[photos.length - 1]; // Size အကြီးဆုံး ပုံကိုယူ
+    const photo = ctx.message.photo[ctx.message.photo.length - 1];
     const file = await ctx.api.getFile(photo.file_id);
     const photoUrl = `https://api.telegram.org/file/bot${BOT_TOKEN}/${file.file_path}`;
 
-    // ၃။ OCR နည်းပညာဖြင့် ပုံထဲက စာသားများကို စစ်ဆေးခြင်း
-    const extractedText = await checkImageWithOCR(photoUrl);
-    const lowerText = extractedText.toLowerCase();
+    const isValidScreenshot = await verifyImageContent(photoUrl);
 
-    // ၄။ မဆိုင်သော ပုံများ (ဥပမာ ပုံပါ Admin Rights, Settings စသည်) ကို ပယ်ဖျက်ခြင်း
-    const invalidKeywords = ['admin rights', 'manage messages', 'invite users', 'dismiss admin', 'ban users', 'channel info'];
-    const isInvalidImage = invalidKeywords.some(keyword => lowerText.includes(keyword));
-
-    // ၅။ Target Main Post ထဲက တကယ့်စာသားများ (ဥပမာ Bot, prepared, discussion) ပါမပါ စစ်ဆေးခြင်း
-    const validKeywords = ['bot', 'prepared', 'discussion', 'crypto', 'comments'];
-    const hasValidContent = validKeywords.some(keyword => lowerText.includes(keyword));
-
-    if (isInvalidImage || (!hasValidContent && extractedText.length > 0)) {
+    if (!isValidScreenshot) {
       const sentErr = await ctx.reply(
         `❌ <b>မဆိုင်သော/ပုံအတု ဖြစ်နေပါသည်!</b>\n\n` +
-        `ကျေးဇူးပြု၍ Target Post တွင် Reaction ပေးထားသည့် **Screenshot စစ်စစ်** ကိုသာ ပို့ပေးပါ။`,
+        `ကျေးဇူးပြု၍ Target Post တွင် Reaction ပေးထားသည့် **Screenshot ပုံစစ်စစ်** ကိုသာ ပို့ပေးပါ။`,
         { parse_mode: 'HTML', reply_to_message_id: ctx.message.message_id }
       );
       deleteMessageLater(ctx, ctx.chat.id, sentErr.message_id, 5000);
@@ -250,7 +263,9 @@ bot.on('message:photo', async (ctx) => {
       return;
     }
 
-    // ၆။ စစ်ဆေးမှု အောင်မြင်ပါက Verification ကို DB တွင် မှတ်သားမည်
+    const userId = ctx.from.id;
+
+    // စစ်ဆေးမှု အားလုံး အောင်မြင်မှသာ Database တွင် Verify အဖြစ် သိမ်းဆည်းမည်
     await saveVerification(userId, threadId);
 
     const replyText = `✅ <b>Post Proof Verified!</b>\n` +
@@ -269,10 +284,9 @@ bot.on('message:photo', async (ctx) => {
     deleteMessageLater(ctx, ctx.chat.id, sent.message_id, 5000);
 
   } catch (err) {
-    console.error("Verification Error:", err);
-    // API သို့မဟုတ် OCR အမှားအယွင်းရှိပါက လုံခြုံရေးအတွက် Save မလုပ်ဘဲ အကြောင်းပြန်မည်
+    console.error("Photo Processing Error:", err);
     const sentErr = await ctx.reply(
-      `❌ <b>Screenshot Verification မအောင်မြင်ပါ။</b>\n\nကျေးဇူးပြု၍ Target Post Screenshot ပုံစစ်စစ်ကို ပြန်လည်ပို့ပေးပါ။`,
+      `❌ <b>Verification မအောင်မြင်ပါ။</b>\n\nကျေးဇူးပြု၍ Target Post Screenshot ပုံစစ်စစ်ကို ပြန်လည်ပို့ပေးပါ။`,
       { parse_mode: 'HTML', reply_to_message_id: ctx.message.message_id }
     );
     deleteMessageLater(ctx, ctx.chat.id, sentErr.message_id, 5000);

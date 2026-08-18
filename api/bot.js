@@ -121,7 +121,7 @@ bot.command('broadcast', async (ctx) => {
     await ctx.api.editMessageText(
       ctx.chat.id, 
       statusMsg.message_id, 
-      `✅ <b>Broadcast ပြီးစီးပါပြီ!</b>\n\n📤 ပို့ဆောင်နိုင်သူ - ${successCount} ဦး\n❌ မပို့နိုင်သူ - ${failCount} ဦး`, 
+      `✅ <b>Broadcast ပြီးစီးပါပြီ!</b>\n\n📤 ပို့ဆောင်နိုင်သူ - ${successCount} ဦးနှင့် ❌ မပို့နိုင်သူ - ${failCount} ဦး`, 
       { parse_mode: 'HTML' }
     );
 
@@ -132,7 +132,7 @@ bot.command('broadcast', async (ctx) => {
 });
 
 // ==========================================
-// 4. Handle Photo (Proof Submission for Verification)
+// 4. Handle Photo (Proof Verification for Main Post)
 // ==========================================
 bot.on('message:photo', async (ctx) => {
   const isComment = ctx.message.reply_to_message || ctx.message.is_topic_message;
@@ -142,8 +142,29 @@ bot.on('message:photo', async (ctx) => {
   const rawUsername = ctx.from.username || ctx.from.first_name || `ID: ${userId}`;
   const displayName = ctx.from.username ? `@${ctx.from.username}` : rawUsername;
 
+  // ပို့လိုက်သော Comment သို့မဟုတ် Reply လုပ်ထားသည့် Main Post ၏ စာသားကို ယူစစ်ဆေးခြင်း
+  const repliedMessage = ctx.message.reply_to_message;
+  const postCaption = repliedMessage?.text || repliedMessage?.caption || '';
+
+  // Main Post တွင် ပါရမည့် သက်ဆိုင်ရာ သတ်မှတ်စာသား (ဥပမာ - WORLD BEST CRYPTO သို့မဟုတ် လိုအပ်သော Keywords များ)
+  // လိုအပ်ပါက မိမိတို့၏ Main Post စာသားအလိုက် ထပ်မံဖြည့်စွက်နိုင်ပါသည်။
+  const expectedKeyword = "WORLD BEST CRYPTO"; 
+  const hasValidText = postCaption.includes(expectedKeyword) || postCaption.length > 0;
+
+  if (!hasValidText) {
+    const errorMsg = `❌ <b>Invalid Post Proof!</b>\n` +
+      `တင်ပြထားသော ပုံသည် သက်ဆိုင်ရာ Main Post နှင့် မကိုက်ညီပါ။ ကျေးဇူးပြု၍ မှန်ကန်သော Post တွင် Reaction ပြုလုပ်ထားသည့် ပုံကိုသာ ပြန်လည်တင်ပြပေးပါ။`;
+    
+    const sentErr = await ctx.reply(errorMsg, {
+      parse_mode: 'HTML',
+      reply_to_message_id: ctx.message.message_id
+    });
+    deleteMessageLater(ctx, ctx.chat.id, sentErr.message_id, 8000);
+    return;
+  }
+
   try {
-    // User ကို Database တွင် Verified = true ဟု မှတ်တမ်းတင်မည်
+    // စာသားနှင့် ပုံမှန်ကန်ပါက Database တွင် Verified = true ဟု မှတ်တမ်းတင်မည်
     await supabase.from('users').upsert({
       telegram_id: userId,
       username: rawUsername,
@@ -198,10 +219,10 @@ bot.on('message:dice', async (ctx) => {
         disable_web_page_preview: true
       });
       deleteMessageLater(ctx, ctx.chat.id, sentWarning.message_id, 10000);
-      return; // Verification မပြီးသေးပါက ဆက်မလုပ်တော့ပါ
+      return; 
     }
 
-    // --- Verified ဖြစ်မှသာ အောက်ပါ Spin လုပ်ငန်းစဥ် ဆက်လုပ်မည် ---
+    // --- Verified ဖြစ်မှသာ Spin လုပ်ငန်းစဥ် ဆက်လုပ်မည် ---
     const diceValue = ctx.message.dice.value;
     let replyText = '';
     const winCombination = getSlotResult(diceValue);

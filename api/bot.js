@@ -38,7 +38,7 @@ bot.catch((err) => {
   console.error('Error in bot:', err);
 });
 
-// Helper Function to Delete Message Later
+// Helper Function to Delete Message Later (Default 5 seconds)
 const deleteMessageLater = (ctx, chatId, messageId, delay = 5000) => {
   const promise = (async () => {
     await sleep(delay);
@@ -90,11 +90,11 @@ bot.command('start', async (ctx) => {
 bot.command('spin', async (ctx) => {
   const postLink = getPostLink(ctx);
   const promptText = `⚠️ <b>Proof Verification Required!</b>\n\n` +
-    `Please send your screenshot with the exact text caption: <code>WORLD BEST CRYPTO</code> to verify your post reaction!\n\n` +
+    `Please react to the original post with (❤️ / 👍) and reply directly to that post with your screenshot caption <code>WORLD BEST CRYPTO</code>!\n\n` +
     `🔗 <b>Target Post:</b> <a href="${postLink}">Click Here To View Post</a>`;
 
   const sent = await ctx.reply(promptText, { parse_mode: 'HTML', disable_web_page_preview: true });
-  deleteMessageLater(ctx, ctx.chat.id, sent.message_id, 15000);
+  deleteMessageLater(ctx, ctx.chat.id, sent.message_id, 5000);
 });
 
 // 3. Admin Broadcast Command
@@ -151,7 +151,7 @@ bot.command('broadcast', async (ctx) => {
   }
 });
 
-// 4. Strict Caption & Photo Verification Handling
+// 4. Strict Caption & Photo Verification Handling (Must be in a comment/thread)
 bot.on('message:photo', async (ctx) => {
   const isComment = ctx.message.reply_to_message || ctx.message.is_topic_message;
   if (!isComment) return;
@@ -160,14 +160,13 @@ bot.on('message:photo', async (ctx) => {
   const rawUsername = ctx.from.username || ctx.from.first_name || `ID: ${userId}`;
   const displayName = ctx.from.username ? `@${ctx.from.username}` : rawUsername;
 
-  // Check photo caption strictly for the target post text
   const photoCaption = ctx.message.caption || '';
   const isValidCaption = photoCaption.includes('WORLD BEST CRYPTO') || photoCaption.includes('game link');
 
   if (!isValidCaption) {
     const errorMsg = await ctx.reply(
       `❌ <b>Invalid Verification!</b>\n` +
-      `Please send your screenshot with the exact caption <code>WORLD BEST CRYPTO</code> to verify your post reaction.`,
+      `Please react to the post (❤️ / 👍) and send your screenshot with caption <code>WORLD BEST CRYPTO</code> by replying directly to the target post!`,
       { parse_mode: 'HTML', reply_to_message_id: ctx.message.message_id }
     );
     deleteMessageLater(ctx, ctx.chat.id, ctx.message.message_id, 5000);
@@ -175,7 +174,6 @@ bot.on('message:photo', async (ctx) => {
     return;
   }
 
-  // Save verification status to Supabase (remains verified for unlimited spins on this post)
   try {
     await supabase.from('users').upsert({
       telegram_id: userId,
@@ -203,13 +201,29 @@ bot.on('message:dice', async (ctx) => {
   if (!ctx.message.dice || ctx.message.dice.emoji !== '🎰') return;
 
   const isComment = ctx.message.reply_to_message || ctx.message.is_topic_message;
-  if (!isComment) return;
+  if (!isComment) {
+    // If sent directly in group main chat instead of post comment/thread
+    try {
+      await ctx.api.deleteMessage(ctx.chat.id, ctx.message.message_id);
+    } catch (e) {
+      console.error("Failed to delete main chat spin message:", e);
+    }
+
+    const postLink = getPostLink(ctx);
+    const warningMsg = await ctx.reply(
+      `⚠️ <b>Proof Verification Required!</b>\n\n` +
+      `Please reply directly inside the <b>target post's comment section</b> with your reaction (❤️ / 👍) and screenshot caption <code>WORLD BEST CRYPTO</code> to spin!\n\n` +
+      `🔗 <b>Target Post:</b> <a href="${postLink}">Click Here To View Post</a>`,
+      { parse_mode: 'HTML', disable_web_page_preview: true }
+    );
+    deleteMessageLater(ctx, ctx.chat.id, warningMsg.message_id, 5000);
+    return;
+  }
 
   const userId = ctx.from.id;
   const rawUsername = ctx.from.username || ctx.from.first_name || `ID: ${userId}`;
   const displayName = ctx.from.username ? `@${ctx.from.username}` : rawUsername;
 
-  // Check verification status from Supabase
   let isVerified = false;
   try {
     const { data: userRecord } = await supabase
@@ -225,7 +239,7 @@ bot.on('message:dice', async (ctx) => {
     console.error("Check verification error:", e);
   }
 
-  // If not verified, instantly delete the unverified spin dice message and send warning
+  // If not verified, instantly delete the unverified spin dice message and send warning that auto-deletes in 5 seconds
   if (!isVerified) {
     try {
       await ctx.api.deleteMessage(ctx.chat.id, ctx.message.message_id);
@@ -235,7 +249,7 @@ bot.on('message:dice', async (ctx) => {
 
     const postLink = getPostLink(ctx);
     const warningText = `⚠️ <b>Proof Verification Required!</b>\n\n` +
-      `Your spin was deleted because you are not verified! Please send your screenshot with caption <code>WORLD BEST CRYPTO</code> first!\n\n` +
+      `Your spin was deleted because you are not verified! Please react to the post (❤️ / 👍) and send your screenshot reply with caption <code>WORLD BEST CRYPTO</code> first!\n\n` +
       `🔗 <b>Target Post:</b> <a href="${postLink}">Click Here To View Post</a>`;
 
     const warningMsg = await ctx.reply(warningText, { 
@@ -243,11 +257,11 @@ bot.on('message:dice', async (ctx) => {
       disable_web_page_preview: true
     });
 
-    deleteMessageLater(ctx, ctx.chat.id, warningMsg.message_id, 7000);
+    deleteMessageLater(ctx, ctx.chat.id, warningMsg.message_id, 5000);
     return;
   }
 
-  // If verified, process spin results (unlimited spins allowed since is_verified is kept true)
+  // If verified, process spin results (unlimited spins allowed on this post)
   const diceValue = ctx.message.dice.value;
   let replyText = '';
   const winCombination = getSlotResult(diceValue);
@@ -271,7 +285,7 @@ bot.on('message:dice', async (ctx) => {
       telegram_id: userId,
       username: rawUsername,
       balance: newBalance,
-      is_verified: true // Keeps status verified for unlimited spins on this post
+      is_verified: true 
     }, { onConflict: 'telegram_id' });
 
     if (winCombination) {

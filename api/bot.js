@@ -12,7 +12,7 @@ const bot = new Bot(BOT_TOKEN);
 // Sleep Helper Function
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-// Telegram Slot Machine Result Calculation
+// Telegram Slot Machine ၏ 777 အပါအဝင် တရားဝင် ရလဒ်များအားလုံး တိကျစွာ တွက်ချက်သည့် Function
 const getSlotResult = (value) => {
   let v = value - 1;
   let r1 = v % 4;             
@@ -20,10 +20,10 @@ const getSlotResult = (value) => {
   let r3 = Math.floor(v / 16) % 4;
 
   const symbols = {
-    0: { name: '🏷️ BAR BAR BAR', reward: 0.00080 },    
-    1: { name: '🍇 🍇 🍇',       reward: 0.00050 },   
-    2: { name: '🍋 🍋 🍋',       reward: 0.00030 },   
-    3: { name: '7️⃣ 7️⃣ 7️⃣ (Jackpot)', reward: 0.0010 } 
+    0: { name: '🏷️ BAR BAR BAR', reward: 0.00080 },    // BAR = 0.00080 GRAM
+    1: { name: '🍇 🍇 🍇',       reward: 0.00050 },   // Grape = 0.00050 GRAM
+    2: { name: '🍋 🍋 🍋',       reward: 0.00030 },   // Lemon = 0.00030 GRAM
+    3: { name: '7️⃣ 7️⃣ 7️⃣ (Jackpot)', reward: 0.0010 } // 777 = 0.0010 GRAM
   };
 
   if (r1 === r2 && r2 === r3) {
@@ -38,8 +38,8 @@ bot.catch((err) => {
   console.error('Error in bot:', err);
 });
 
-// Helper Function to Delete Message Later (5 Seconds)
-const deleteMessageLater = (ctx, chatId, messageId, delay = 5000) => {
+// Helper Function to Delete Message Later (အမြန်ပြန်ဖြေနိုင်စေရန် 2 စက္ကန့်သို့ သတ်မှတ်ထားသည်)
+const deleteMessageLater = (ctx, chatId, messageId, delay = 2000) => {
   const promise = (async () => {
     await sleep(delay);
     try {
@@ -114,7 +114,7 @@ bot.command('start', async (ctx) => {
     reply_to_message_id: ctx.message.reply_to_message ? ctx.message.reply_to_message.message_id : undefined,
     message_thread_id: ctx.message.message_thread_id
   });
-  deleteMessageLater(ctx, ctx.chat.id, sent.message_id, 5000);
+  deleteMessageLater(ctx, ctx.chat.id, sent.message_id, 2000);
 });
 
 // 2. /spin Command
@@ -132,24 +132,24 @@ bot.command('spin', async (ctx) => {
     reply_to_message_id: ctx.message.reply_to_message ? ctx.message.reply_to_message.message_id : undefined,
     message_thread_id: ctx.message.message_thread_id
   });
-  deleteMessageLater(ctx, ctx.chat.id, sent.message_id, 5000);
+  deleteMessageLater(ctx, ctx.chat.id, sent.message_id, 2000);
 });
 
-// 3. Admin Broadcast Command
+// 3. Admin (1793453606) သီးသန့် Broadcast ပို့မည့် Command
 bot.command('broadcast', async (ctx) => {
   const userId = ctx.from?.id;
   
   if (userId !== 1793453606) {
     const sent = await ctx.reply('❌ This command is restricted.');
-    deleteMessageLater(ctx, ctx.chat.id, sent.message_id, 5000);
+    deleteMessageLater(ctx, ctx.chat.id, sent.message_id, 2000);
     return;
   }
 
   const customMessage = ctx.match;
 
   if (!customMessage) {
-    const sent = await ctx.reply('⚠️ Please provide a message.\n\n<b>Format:</b> <code>/broadcast your_message_here</code>', { parse_mode: 'HTML' });
-    deleteMessageLater(ctx, ctx.chat.id, sent.message_id, 5000);
+    const sent = await ctx.reply('⚠️ ကျေးဇူးပြု၍ ပို့လိုသော စာသားကို ထည့်ပါ။\n\n<b>ပုံစံ -</b> <code>/broadcast your_message_here</code>', { parse_mode: 'HTML' });
+    deleteMessageLater(ctx, ctx.chat.id, sent.message_id, 2000);
     return;
   }
 
@@ -159,12 +159,12 @@ bot.command('broadcast', async (ctx) => {
       .select('telegram_id');
 
     if (error || !users || users.length === 0) {
-      const sent = await ctx.reply('❌ No users found in database.');
-      deleteMessageLater(ctx, ctx.chat.id, sent.message_id, 5000);
+      const sent = await ctx.reply('❌ Database မှ User စာရင်းများကို ဆွဲထုတ်၍ မရပါ (သို့) User မရှိပါ။');
+      deleteMessageLater(ctx, ctx.chat.id, sent.message_id, 2000);
       return;
     }
 
-    const statusMsg = await ctx.reply(`🚀 Broadcasting to ${users.length} users...`);
+    const statusMsg = await ctx.reply(`🚀 User ${users.length} ဦးထံသို့ စတင်ပို့ဆောင်နေပါပြီ...`);
 
     let successCount = 0;
     let failCount = 0;
@@ -176,7 +176,7 @@ bot.command('broadcast', async (ctx) => {
           disable_web_page_preview: false
         });
         successCount++;
-        await sleep(50); 
+        await sleep(20); // ပိုမိုမြန်ဆန်စွာ ပို့ဆောင်နိုင်ရန် အချိန်ကို လျှော့ချထားသည်
       } catch (err) {
         failCount++; 
       }
@@ -185,15 +185,15 @@ bot.command('broadcast', async (ctx) => {
     await ctx.api.editMessageText(
       ctx.chat.id, 
       statusMsg.message_id, 
-      `✅ <b>Broadcast Completed!</b>\n\n📤 Success - ${successCount}\n❌ Failed - ${failCount}`, 
+      `✅ <b>Broadcast ပြီးစီးပါပြီ!</b>\n\n📤 ပို့ဆောင်နိုင်သူ - ${successCount} ဦး\n❌ မပို့နိုင်သူ - ${failCount} ဦး`, 
       { parse_mode: 'HTML' }
     );
-    deleteMessageLater(ctx, ctx.chat.id, statusMsg.message_id, 5000);
+    deleteMessageLater(ctx, ctx.chat.id, statusMsg.message_id, 2000);
 
   } catch (err) {
     console.error("Broadcast Error:", err);
-    const sent = await ctx.reply('❌ Error occurred during broadcast.');
-    deleteMessageLater(ctx, ctx.chat.id, sent.message_id, 5000);
+    const sent = await ctx.reply('❌ Broadcast လုပ်ရာတွင် အမှားအယွင်း ရှိနေပါသည်။');
+    deleteMessageLater(ctx, ctx.chat.id, sent.message_id, 2000);
   }
 });
 
@@ -227,7 +227,7 @@ bot.on('message:photo', async (ctx) => {
         message_thread_id: ctx.message.message_thread_id
       }
     );
-    deleteMessageLater(ctx, ctx.chat.id, errorMsg.message_id, 5000);
+    deleteMessageLater(ctx, ctx.chat.id, errorMsg.message_id, 2000);
     return;
   }
 
@@ -240,7 +240,6 @@ bot.on('message:photo', async (ctx) => {
 
     const currentBalance = existingUser && existingUser.balance !== null ? parseFloat(existingUser.balance) : 0;
 
-    // Database တွင် ယခု Post အတွက် Verified ဖြစ်ကြောင်း မှတ်သားမည်
     await supabase.from('users').upsert({
       telegram_id: userId,
       username: rawUsername,
@@ -262,10 +261,10 @@ bot.on('message:photo', async (ctx) => {
     }
   );
   
-  deleteMessageLater(ctx, ctx.chat.id, successMsg.message_id, 5000);
+  deleteMessageLater(ctx, ctx.chat.id, successMsg.message_id, 2000);
 });
 
-// 5. Slot Machine Dice Handling
+// 5. Slot Machine Dice Handling (Verification + Multi-Post Check)
 bot.on('message:dice', async (ctx) => {
   if (!ctx.message.dice || ctx.message.dice.emoji !== '🎰') return;
   if (!isCommentSection(ctx)) return;
@@ -284,8 +283,6 @@ bot.on('message:dice', async (ctx) => {
       .eq('telegram_id', userId)
       .maybeSingle();
 
-    // အဓိက စစ်ဆေးချက် - User သည် verify လုပ်ထားပြီး၊ verified_post_id သည် ယခုလက်ရှိ Post ID နှင့် 
-    // အတိအကျတူညီနေမှသာလျှင် ဤ Post ထဲတွင် ဆက်လက် Spin လှည့်ခွင့်ပြုမည်
     if (userRecord && userRecord.is_verified === true && userRecord.verified_post_id === currentSpinPostId) {
       isVerifiedForThisPost = true;
     }
@@ -293,7 +290,6 @@ bot.on('message:dice', async (ctx) => {
     console.error("Check verification error:", e);
   }
 
-  // အကယ်၍ ထို Post တွင် မ verify ရသေးလျှင် သို့မဟုတ် Post အသစ်ပြောင်းသွားလျှင် Spin ကို ဖျက်မည်
   if (!isVerifiedForThisPost) {
     try {
       await ctx.api.deleteMessage(ctx.chat.id, ctx.message.message_id);
@@ -313,11 +309,10 @@ bot.on('message:dice', async (ctx) => {
       message_thread_id: ctx.message.message_thread_id
     });
 
-    deleteMessageLater(ctx, ctx.chat.id, warningMsg.message_id, 5000);
+    deleteMessageLater(ctx, ctx.chat.id, warningMsg.message_id, 2000);
     return;
   }
 
-  // Verify ပြီးသား Post ဖြစ်ပါက Spin ကို မဖျက်ဘဲ ရလဒ်တွက်ချက်ပေးမည်
   const diceValue = ctx.message.dice.value;
   let replyText = '';
   const winCombination = getSlotResult(diceValue);
@@ -357,18 +352,33 @@ bot.on('message:dice', async (ctx) => {
     }
   } catch (error) {
     console.error("Supabase Error:", error);
-    replyText = `❌ <b>Try again ${displayName}! Better luck next time.</b>\n` +
-      `<b>Mini Withdraw = 0.05 GRAM💰,@Rampage528📢</b>`;
+    try {
+      let { data: user } = await supabase
+        .from('users')
+        .select('balance')
+        .eq('telegram_id', userId)
+        .maybeSingle();
+      let currentBalance = user && user.balance ? parseFloat(user.balance) : 0;
+      replyText = `❌ <b>Try again ${displayName}! Better luck next time.</b>\n` +
+        `<blockquote><b>Balance = <code>${currentBalance.toFixed(6)} 💎</code></b></blockquote>\n` +
+        `<b>Mini Withdraw = 0.05 GRAM💰,@Rampage528📢</b>`;
+    } catch (e) {
+      replyText = `❌ <b>Try again ${displayName}! Better luck next time.</b>\n` +
+        `<b>Mini Withdraw = 0.05 GRAM💰,@REFERWORLD1📢</b>`;
+    }
   }
 
-  const sentMsg = await ctx.reply(replyText, { 
+  const replyOptions = { 
     parse_mode: 'HTML',
-    reply_to_message_id: ctx.message.reply_to_message ? ctx.message.reply_to_message.message_id : undefined,
-    message_thread_id: ctx.message.message_thread_id
-  });
+    reply_to_message_id: ctx.message.message_id
+  };
   
-  // Balance message ကို 5 စက္ကန့်ပြည့်တာနဲ့ အလိုအလျောက် ဖျက်ပေးမည်
-  deleteMessageLater(ctx, ctx.chat.id, sentMsg.message_id, 5000);
+  if (ctx.message.message_thread_id) {
+    replyOptions.message_thread_id = ctx.message.message_thread_id;
+  }
+
+  const sentMsg = await ctx.reply(replyText, replyOptions);
+  deleteMessageLater(ctx, ctx.chat.id, sentMsg.message_id, 2000);
 });
 
 // Vercel Serverless Native Handler

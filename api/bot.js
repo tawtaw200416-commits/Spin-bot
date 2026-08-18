@@ -151,7 +151,7 @@ bot.command('broadcast', async (ctx) => {
   }
 });
 
-// 4. Photo Verification Handling inside Comment (Strict Original Post Check only)
+// 4. Photo Verification Handling (Strictly blocking Bot's own prompt replies)
 bot.on('message:photo', async (ctx) => {
   const isComment = ctx.message.reply_to_message || ctx.message.is_topic_message;
   if (!isComment) return;
@@ -162,19 +162,17 @@ bot.on('message:photo', async (ctx) => {
 
   const repliedMessage = ctx.message.reply_to_message;
   const repliedText = repliedMessage ? (repliedMessage.text || repliedMessage.caption || '') : '';
+  const repliedSenderId = repliedMessage?.from?.id;
 
-  // 1. Bot ရဲ့ Prompt Message ကို Reply ပေးထားခြင်း ဟုတ်မဟုတ် စစ်ဆေးရန် (Bot Prompt ကို Reply ပေးထားလျှင် ပယ်ချမည်)
-  const isBotPrompt = repliedText.includes('Proof Verification Required') || repliedText.includes('Target Post');
+  // Bot ကိုယ်တိုင် ပို့ထားသော Prompt Message (သို့) Bot ကိုယ်တိုင်ရဲ့ ID နဲ့ Reply ပေးထားခြင်း ဟုတ်မဟုတ် စစ်ဆေးခြင်း
+  const isBotItself = repliedSenderId === ctx.botInfo.id;
+  const hasPromptKeywords = repliedText.includes('Proof Verification Required') || repliedText.includes('Target Post');
 
-  // 2. တရားဝင် မူရင်း Channel Post ၏ စာသားအစစ်အမှန် ပါဝင်ရမည် (ဥပမာ - WORLD BEST CRYPTO သို့မဟုတ် game link / invite code စသည်တို့)
-  const isRealChannelPost = repliedText.includes('WORLD BEST CRYPTO') || 
-                            (repliedText.includes('game link') && repliedText.includes('invite code'));
-
-  // အကယ်၍ Bot Prompt ကို Reply ပေးထားလျှင် (သို့) မူရင်း Post အစစ်အမှန် မဟုတ်လျှင် (KBZ slip ကဲ့သို့ ပုံများ) တားဆီးမည်
-  if (isBotPrompt || !isRealChannelPost) {
+  // အကယ်၍ Bot ရဲ့ မက်ဆေ့ချ် (သို့) Prompt ကို Reply ပေးထားလျှင် လုံးဝ တားဆီးမည် (Invalid)
+  if (isBotItself || hasPromptKeywords) {
     const errorMsg = await ctx.reply(
       `❌ <b>Invalid Screenshot!</b>\n` +
-      `Please reply directly to the <b>original channel post</b> (not the bot message) with its screenshot.`,
+      `Do not reply to the bot message. Please reply directly to the <b>original channel post</b> with its screenshot.`,
       { parse_mode: 'HTML', reply_to_message_id: ctx.message.message_id }
     );
     deleteMessageLater(ctx, ctx.chat.id, ctx.message.message_id, 5000);
@@ -182,6 +180,7 @@ bot.on('message:photo', async (ctx) => {
     return;
   }
 
+  // မူရင်း Channel Post အစစ်အမှန် ဖြစ်ကြောင်း အတည်ပြုချက်
   const successMsg = await ctx.reply(
     `✅ <b>Verification Successful, ${displayName}!</b>\n` +
     `Your screenshot has been verified. Now you can spin with 🎰!`,
@@ -203,18 +202,20 @@ bot.on('message:dice', async (ctx) => {
 
   const repliedMessage = ctx.message.reply_to_message;
   const repliedText = repliedMessage ? (repliedMessage.text || repliedMessage.caption || '') : '';
+  const repliedSenderId = repliedMessage?.from?.id;
 
-  // User တင်ထားသော ဓာတ်ပုံသည် ကိုယ်ပိုင် Screenshot ပုံဖြစ်ပြီး၊ ၎င်းပုံသည် မူရင်း Channel Post အောက်တွင် Reply ပေးထားခြင်းဖြစ်ရမည်
+  // User တင်ထားသော ဓာတ်ပုံသည် ကိုယ်ပိုင် Screenshot ပုံဖြစ်ပြီး၊ ၎င်းပုံသည် Bot Prompt ကို Reply ပေးထားခြင်း မဟုတ်ရပါ
   const isUserValidPhotoProof = repliedMessage && 
     repliedMessage.from && 
     repliedMessage.from.id === ctx.from.id && 
     repliedMessage.photo &&
-    !(repliedText.includes('Proof Verification Required'));
+    repliedSenderId !== ctx.botInfo.id &&
+    !repliedText.includes('Proof Verification Required');
 
   if (!isUserValidPhotoProof) {
     const postLink = getPostLink(ctx);
     const warningText = `⚠️ <b>Proof Verification Required!</b>\n\n` +
-      `Please upload the correct target post screenshot first before spinning!\n\n` +
+      `Please reply to the original channel post and upload your screenshot first before spinning!\n\n` +
       `🔗 <b>Target Post:</b> <a href="${postLink}">Click Here To View Post</a>`;
 
     const warningMsg = await ctx.reply(warningText, { 

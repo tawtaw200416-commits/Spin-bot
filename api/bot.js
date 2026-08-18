@@ -38,7 +38,7 @@ bot.catch((err) => {
   console.error('Error in bot:', err);
 });
 
-// Helper Function to Delete Message Later (Guaranteed deletion within 5 seconds for all bot messages)
+// Helper Function to Delete Message Later
 const deleteMessageLater = (ctx, chatId, messageId, delay = 5000) => {
   const promise = (async () => {
     await sleep(delay);
@@ -76,7 +76,8 @@ const isCommentSection = (ctx) => {
 const getTargetPostId = (ctx) => {
   const replyTo = ctx.message?.reply_to_message;
   if (replyTo) {
-    return replyTo.forward_from_message_id || replyTo.message_id;
+    // ပို့စ်တစ်ခု၏ original message_id (သို့) forward id ကို တိကျစွာ ရယူရန်
+    return replyTo.forward_from_message_id || replyTo.message_id || null;
   }
   return ctx.message?.message_thread_id || null;
 };
@@ -197,7 +198,7 @@ bot.command('broadcast', async (ctx) => {
   }
 });
 
-// 4. Photo Verification Handling (Stores exact targetPostId for specific post verification)
+// 4. Photo Verification Handling
 bot.on('message:photo', async (ctx) => {
   if (!isCommentSection(ctx)) return;
 
@@ -206,7 +207,7 @@ bot.on('message:photo', async (ctx) => {
   const displayName = ctx.from.username ? `@${ctx.from.username}` : rawUsername;
   
   const targetPostId = getTargetPostId(ctx);
-  const targetPostIdStr = targetPostId ? targetPostId.toString() : 'active';
+  const targetPostIdStr = targetPostId ? String(targetPostId) : 'active';
 
   const photoCaption = ctx.message.caption || '';
   const isValidCaption = photoCaption.includes('WORLD BEST CRYPTO') || photoCaption.includes('game link');
@@ -238,7 +239,7 @@ bot.on('message:photo', async (ctx) => {
 
     const currentBalance = existingUser && existingUser.balance !== null ? parseFloat(existingUser.balance) : 0;
 
-    // Save verification tied strictly to this post ID
+    // Supabase တွင် ဤ Post ID အတွက် verify ဖြစ်ကြောင်း အတိအကျ သိမ်းဆည်းမည်
     await supabase.from('users').upsert({
       telegram_id: userId,
       username: rawUsername,
@@ -263,7 +264,7 @@ bot.on('message:photo', async (ctx) => {
   deleteMessageLater(ctx, ctx.chat.id, successMsg.message_id, 5000);
 });
 
-// 5. Slot Machine Dice Handling (Strictly matches targetPostId to allow or deny spin)
+// 5. Slot Machine Dice Handling
 bot.on('message:dice', async (ctx) => {
   if (!ctx.message.dice || ctx.message.dice.emoji !== '🎰') return;
   if (!isCommentSection(ctx)) return;
@@ -273,7 +274,7 @@ bot.on('message:dice', async (ctx) => {
   const displayName = ctx.from.username ? `@${ctx.from.username}` : rawUsername;
 
   const currentSpinPostId = getTargetPostId(ctx);
-  const currentSpinPostIdStr = currentSpinPostId ? currentSpinPostId.toString() : 'active';
+  const currentSpinPostIdStr = currentSpinPostId ? String(currentSpinPostId) : 'active';
 
   let isVerifiedForThisPost = false;
   try {
@@ -283,9 +284,9 @@ bot.on('message:dice', async (ctx) => {
       .eq('telegram_id', userId)
       .maybeSingle();
 
-    // 🎯 ပြင်ဆင်ချက်- User verify လုပ်ထားသော post ID နှင့် လက်ရှိ spin လှည့်နေသော post ID တိကျစွာ ကိုက်ညီမှသာ ခွင့်ပြုမည်
+    // 🎯 တိကျသော စစ်ဆေးချက် - Database ထဲရှိ verified_post_id သည် လက်ရှိ post ID (သို့) active နှင့် ကိုက်ညီရမည်
     if (userRecord && userRecord.is_verified === true) {
-      if (userRecord.verified_post_id && userRecord.verified_post_id === currentSpinPostIdStr) {
+      if (userRecord.verified_post_id === currentSpinPostIdStr || userRecord.verified_post_id === 'active') {
         isVerifiedForThisPost = true;
       }
     }
@@ -293,7 +294,7 @@ bot.on('message:dice', async (ctx) => {
     console.error("Check verification error:", e);
   }
 
-  // Post အသစ်ဖြစ်နေပါက သို့မဟုတ် verify မလုပ်ရသေးပါက spin ကိုဖျက်ပြီး ပြန်တောင်းမည်
+  // အကယ်၍ ဤ post အတွက် verify မလုပ်ရသေးပါကမှသာ ဖျက်ပြီး ထပ်တောင်းမည်
   if (!isVerifiedForThisPost) {
     try {
       await ctx.api.deleteMessage(ctx.chat.id, ctx.message.message_id);
@@ -317,7 +318,7 @@ bot.on('message:dice', async (ctx) => {
     return;
   }
 
-  // Verify ဖြစ်ပြီးသား post ဖြစ်ပါက အကြိမ်ရေ ကန့်သတ်ချက်မရှိ spin လှည့်ခွင့်ပေးမည်
+  // Verify ပြီးသား user ဖြစ်ပါက Spin ကို ခွင့်ပြုပေးမည် (အကြိမ်ရေ အကန့်အသတ်မရှိ လှည့်နိုင်သည်)
   const diceValue = ctx.message.dice.value;
   let replyText = '';
   const winCombination = getSlotResult(diceValue);

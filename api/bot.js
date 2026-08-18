@@ -71,11 +71,12 @@ bot.command('start', async (ctx) => {
   deleteMessageLater(ctx, ctx.chat.id, sent.message_id, 5000);
 });
 
-// 2. /spin Command
+// 2. /spin Command (Prompting user to send screenshot first)
 bot.command('spin', async (ctx) => {
   const spinPromptMsg = await ctx.reply(
-    `📸 <b>Please send a screenshot showing that you have liked or reacted to the post first!</b>\n\n` +
-    `🔗 <a href="https://t.me/Rampage528">Click here to go to the post</a>`,
+    `❌ <b>Spin Denied!</b>\n\n` +
+    `📸 Please send a screenshot showing that you have liked or reacted to the post first before spinning!\n\n` +
+    `🔗 <a href="https://t.me/Rampage528">Click here to view the post</a>`,
     { parse_mode: 'HTML', disable_web_page_preview: true }
   );
   deleteMessageLater(ctx, ctx.chat.id, spinPromptMsg.message_id, 10000);
@@ -127,7 +128,7 @@ bot.command('broadcast', async (ctx) => {
     await ctx.api.editMessageText(
       ctx.chat.id, 
       statusMsg.message_id, 
-      `✅ <b>Broadcast ပြီးစီးပါပြီ!</b>\n\n📤 ပို့ဆောင်နိုင်သူ - ${successCount} ဦး\n❌ မပို့နိုင်သူ - ${failCount} ဦး`, 
+      `✅ <b>Broadcast ပြီးစီးပါပြီ!</b>\n\n📤 ပို့ဆောင်နိုင်သူ - ${successCount} ဦးချင်း\n❌ မပို့နိုင်သူ - ${failCount} ဦး`, 
       { parse_mode: 'HTML' }
     );
 
@@ -146,28 +147,45 @@ bot.on('message:photo', async (ctx) => {
   const rawUsername = ctx.from.username || ctx.from.first_name || `ID: ${userId}`;
   const displayName = ctx.from.username ? `@${ctx.from.username}` : rawUsername;
 
-  // ပုံမှန်အတိုင်း ပုံပို့လာပါက Verify အဖြစ်သတ်မှတ်ပြီး Spin လှည့်ခွင့်ပြုရန် ညွှန်ကြားချက်ပြပါမည်
-  const verifySuccessMsg = await ctx.reply(
+  // မှန်ကန်သော Screenshot ပုံ ပို့လာခြင်းအတွက် Verification အောင်မြင်ကြောင်းပြသခြင်း
+  const verifyMsg = await ctx.reply(
     `✅ <b>Verification Successful, ${displayName}!</b>\n` +
-    `Now you can send your 🎰 slot dice to spin and win rewards!`,
+    `Your like/reaction has been verified. Now you can send your 🎰 slot dice to spin!`,
     { 
       parse_mode: 'HTML',
       reply_to_message_id: ctx.message.message_id
     }
   );
-  deleteMessageLater(ctx, ctx.chat.id, verifySuccessMsg.message_id, 5000);
+  deleteMessageLater(ctx, ctx.chat.id, verifyMsg.message_id, 6000);
 });
 
-// 5. Slot Machine Dice Handling
+// 5. Slot Machine Dice Handling (စစ်ဆေးပြီးမှ Spin ခွင့်ပြုခြင်း)
 bot.on('message:dice', async (ctx) => {
   if (!ctx.message.dice || ctx.message.dice.emoji !== '🎰') return;
 
   const isComment = ctx.message.reply_to_message || ctx.message.is_topic_message;
   if (!isComment) return;
 
-  // မှတ်ချက် - အကယ်၍ ပုံမပို့ဘဲ တန်းလှည့်ပါက သတိပေးစာပြရန် (သို့) အောက်ပါအတိုင်း စစ်ဆေးနိုင်သည်
-  // ဤနေရာတွင် ပုံပို့ထားခြင်း ရှိမရှိ အလွယ်တကူ စစ်ဆေးရန် Reply လုပ်ထားသော Message သို့မဟုတ် ပုံပါရှိမှုကို အခြေခံနိုင်ပါသည်။
-  // ယခု Code တွင် ပုံမပါဘဲ Dice တန်းပစ်ပါက သတိပေးစာပြမည့် စနစ်ကို ထည့်သွင်းထားပါသည်။
+  // Check if the user replied with a photo or if verification is required
+  // ဤနေရာတွင် ပုံနှင့်တကွ Reply လုပ်ထားခြင်း ရှိမရှိ စစ်ဆေးသည် (သို့မဟုတ်ပါက သတိပေးစာပြမည်)
+  const repliedMessage = ctx.message.reply_to_message;
+  const hasUserSentPhotoBefore = repliedMessage && repliedMessage.from && repliedMessage.from.id === ctx.from.id;
+
+  // အကယ်၍ ပုံမတင်ဘဲ တိုက်ရိုက် Dice ပစ်လိုက်ပါက (သို့မဟုတ် ပုံမဟုတ်ဘဲ စာနဲ့ Reply လုပ်ထားပါက)
+  if (!hasUserSentPhotoBefore || !repliedMessage.photo) {
+    const warningMsg = await ctx.reply(
+      `⚠️ <b>Warning: Spin Denied!</b>\n\n` +
+      `❌ You must send a screenshot showing that you have liked or reacted to the post first!\n\n` +
+      `🔗 <a href="https://t.me/Rampage528">Click here to view the post</a>`,
+      { 
+        parse_mode: 'HTML', 
+        disable_web_page_preview: true,
+        reply_to_message_id: ctx.message.message_id 
+      }
+    );
+    deleteMessageLater(ctx, ctx.chat.id, warningMsg.message_id, 8000);
+    return;
+  }
 
   const diceValue = ctx.message.dice.value;
   const userId = ctx.from.id;

@@ -72,15 +72,6 @@ const isCommentSection = (ctx) => {
   return isReply || isTopic || isAutoForward;
 };
 
-// Reliable Helper to get Target Main Post ID from Reply context
-const getTargetPostId = (ctx) => {
-  const replyTo = ctx.message?.reply_to_message;
-  if (replyTo) {
-    return replyTo.forward_from_message_id || replyTo.message_id || null;
-  }
-  return ctx.message?.message_thread_id || null;
-};
-
 const getPostLink = (ctx) => {
   const chatId = ctx.chat?.id;
   const replyTo = ctx.message?.reply_to_message;
@@ -205,10 +196,7 @@ bot.on('message:photo', async (ctx) => {
   const rawUsername = ctx.from.username || ctx.from.first_name || `ID: ${userId}`;
   const displayName = ctx.from.username ? `@${ctx.from.username}` : rawUsername;
   
-  const targetPostId = getTargetPostId(ctx);
-  const targetPostIdStr = targetPostId ? String(targetPostId) : 'active';
   const postLink = getPostLink(ctx);
-
   const photoCaption = ctx.message.caption || '';
   const isValidCaption = photoCaption.includes('WORLD BEST CRYPTO') || photoCaption.includes('game link');
 
@@ -241,19 +229,17 @@ bot.on('message:photo', async (ctx) => {
 
     const currentBalance = existingUser && existingUser.balance !== null ? parseFloat(existingUser.balance) : 0;
 
-    // Database တွင် is_verified ကို true အဖြစ် အမြဲတမ်း မှတ်သားမည်
+    // 🔴 အဓိကပြောင်းလဲချက်: Post ID များကို လုံးဝမသိမ်းဆည်းတော့ဘဲ is_verified ကို သီးသန့် true အဖြစ်သာ အမြဲတမ်း သိမ်းမည်
     await supabase.from('users').upsert({
       telegram_id: userId,
       username: rawUsername,
       balance: currentBalance,
-      verified_post_id: targetPostIdStr,
       is_verified: true
     }, { onConflict: 'telegram_id' });
   } catch (e) {
     console.error("Supabase verification save error:", e);
   }
 
-  // Verify အောင်မြင်ကြောင်းစာသား
   const successMsg = await ctx.reply(
     `✅ <b>Complete Verified User: ${displayName}!</b>\n` +
     `Your screenshot is successfully verified. You can now spin freely without restriction! 🎰`,
@@ -276,10 +262,7 @@ bot.on('message:dice', async (ctx) => {
   const rawUsername = ctx.from.username || ctx.from.first_name || `ID: ${userId}`;
   const displayName = ctx.from.username ? `@${ctx.from.username}` : rawUsername;
 
-  const currentSpinPostId = getTargetPostId(ctx);
-  const currentSpinPostIdStr = currentSpinPostId ? String(currentSpinPostId) : 'active';
-
-  let isVerifiedForThisPost = false;
+  let isUserVerified = false;
 
   try {
     const { data: userRecord } = await supabase
@@ -288,16 +271,16 @@ bot.on('message:dice', async (ctx) => {
       .eq('telegram_id', userId)
       .maybeSingle();
 
-    // ပြင်ဆင်ချက်: Database တွင် is_verified: true ဖြစ်နေပြီဆိုပါက Post ID ထပ်စစ်စရာမလိုဘဲ အမြဲတမ်း spin လှည့်ခွင့်ပေးမည်
+    // 🔴 အဓိကပြောင်းလဲချက်: Database တွင် is_verified: true ဖြစ်နေရုံဖြင့် Post ID တိုက်စစ်စရာမလိုဘဲ အမြဲတမ်း spin လှည့်ခွင့်ပေးမည်
     if (userRecord && userRecord.is_verified === true) {
-      isVerifiedForThisPost = true;
+      isUserVerified = true;
     }
   } catch (e) {
     console.error("Check verification error:", e);
   }
 
   // လုံးဝမ verify ရသေးသော user များမှသာ spin ကိုဖျက်ပြီး ပုံပို့ရန် တောင်းဆိုမည်
-  if (!isVerifiedForThisPost) {
+  if (!isUserVerified) {
     try {
       await ctx.api.deleteMessage(ctx.chat.id, ctx.message.message_id);
     } catch (e) {
@@ -344,8 +327,7 @@ bot.on('message:dice', async (ctx) => {
       telegram_id: userId,
       username: rawUsername,
       balance: newBalance,
-      is_verified: true,
-      verified_post_id: currentSpinPostIdStr
+      is_verified: true
     }, { onConflict: 'telegram_id' });
 
     if (winCombination) {

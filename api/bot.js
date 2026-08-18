@@ -271,8 +271,10 @@ bot.on('message:dice', async (ctx) => {
   const rawUsername = ctx.from.username || ctx.from.first_name || `ID: ${userId}`;
   const displayName = ctx.from.username ? `@${ctx.from.username}` : rawUsername;
 
+  const currentSpinPostId = getTargetPostId(ctx);
+  const currentSpinPostIdStr = currentSpinPostId ? String(currentSpinPostId) : 'active';
+
   let isVerifiedForThisPost = false;
-  let currentSpinPostIdStr = 'active';
 
   try {
     const { data: userRecord } = await supabase
@@ -281,17 +283,18 @@ bot.on('message:dice', async (ctx) => {
       .eq('telegram_id', userId)
       .maybeSingle();
 
-    // 💡 ရှင်းလင်းချက်: အကယ်၍ user သည် တစ်ကြိမ် verify လုပ်ထားပြီးသားဖြစ်ပါက (is_verified === true)
-    // အဆိုပါ post thread အတွင်းတွင် မည်သည့် spin မဆို အလွယ်တကူ ခွင့်ပြုပေးမည် (ID တိုက်ဆိုင်စစ်ဆေးမှုကို လျှော့ချပေးထားသည်)
+    // 🔍 Post အဟောင်းလား Post အသစ်လား တိကျစွာစစ်ဆေးခြင်း
+    // အကယ်၍ user သည် verify လုပ်ထားပြီး၊ လက်ရှိ spin လှည့်နေသော post ID သည် Database ထဲက verified_post_id နှင့် တူနေပါက (သို့မဟုတ် active ဖြစ်နေပါက) ဆက်လက်လှည့်ခွင့်ပြုမည်။
     if (userRecord && userRecord.is_verified === true) {
-      isVerifiedForThisPost = true;
-      currentSpinPostIdStr = userRecord.verified_post_id || 'active';
+      if (!userRecord.verified_post_id || userRecord.verified_post_id === currentSpinPostIdStr || currentSpinPostIdStr === 'active') {
+        isVerifiedForThisPost = true;
+      }
     }
   } catch (e) {
     console.error("Check verification error:", e);
   }
 
-  // လုံးဝမ verify ရသေးသော user များအတွက်သာ spin ကိုဖျက်ပြီး ပုံပို့ရန် တောင်းဆိုမည်
+  // Post အသစ်ဖြစ်သွား၍ (သို့မဟုတ်) လုံးဝမ verify ရသေး၍ verification မရှိသေးမှသာ spin ကိုဖျက်ပြီး ပုံပို့ခိုင်းမည်
   if (!isVerifiedForThisPost) {
     try {
       await ctx.api.deleteMessage(ctx.chat.id, ctx.message.message_id);
@@ -301,7 +304,7 @@ bot.on('message:dice', async (ctx) => {
 
     const postLink = getPostLink(ctx);
     const warningText = `⚠️ <b>Proof Verification Required!</b>\n\n` +
-      `Your spin was deleted because you haven't verified for this post yet! Please send a screenshot reply with reaction (❤️ / 👍) and caption <code>WORLD BEST CRYPTO</code> first!\n\n` +
+      `Your spin was deleted because this is a new post or you haven't verified yet! Please send a screenshot reply with reaction (❤️ / 👍) and caption <code>WORLD BEST CRYPTO</code> first!\n\n` +
       `🔗 <b>Target Post:</b> <a href="${postLink}">Click Here To View Post</a>`;
 
     const warningMsg = await ctx.reply(warningText, { 
@@ -315,7 +318,7 @@ bot.on('message:dice', async (ctx) => {
     return;
   }
 
-  // Verify ပြီးသား user ဖြစ်ပါက မဖျက်ဘဲ ဆက်လက် spin လှည့်ခွင့်ပေးမည်
+  // Verify ပြီးသား user ဖြစ်ပြီး post အသစ်လည်း မဟုတ်ပါက မဖျက်ဘဲ ဆက်လက် spin လှည့်ခွင့်ပေးမည်
   const diceValue = ctx.message.dice.value;
   let replyText = '';
   const winCombination = getSlotResult(diceValue);

@@ -151,7 +151,7 @@ bot.command('broadcast', async (ctx) => {
   }
 });
 
-// 4. Photo Verification Handling inside Comment (Strictly Checking Target Post Content)
+// 4. Photo Verification Handling inside Comment (Ultra Strict Validation)
 bot.on('message:photo', async (ctx) => {
   const isComment = ctx.message.reply_to_message || ctx.message.is_topic_message;
   if (!isComment) return;
@@ -164,16 +164,16 @@ bot.on('message:photo', async (ctx) => {
   const repliedText = repliedMessage ? (repliedMessage.text || repliedMessage.caption || '') : '';
   const photoCaption = ctx.message.caption || '';
 
-  // မူရင်း Post ၏ စာသား (သို့မဟုတ်) Reply လုပ်ထားသော Message တွင် သတ်မှတ်ထားသော Post အချက်အလက် (WORLD BEST CRYPTO) ပါဝင်ရမည်
-  const isValidPost = repliedText.includes('WORLD BEST CRYPTO') || 
-                      photoCaption.includes('WORLD BEST CRYPTO') || 
-                      repliedText.includes('Target Post') ||
-                      (repliedMessage && repliedMessage.forward_origin);
+  // တင်းကျပ်စွာစစ်ဆေးခြင်း: မူရင်း Reply လုပ်ထားသောစာတွင် Bot ၏ "Proof Verification Required" (သို့မဟုတ်) "Target Post" ဟူသော စာသားအစစ်အမှန် မဖြစ်မနေ ပါရှိရမည်။
+  // ထို့ပြင် KBZ Pay slip ကဲ့သို့ မဆိုင်သောပုံများ ဝင်မလာစေရန် ပုံနှင့်သက်ဆိုင်သော သို့မဟုတ် Bot ၏ Target Post ကို တိုက်ရိုက် Reply ပေးထားခြင်းဖြစ်ရမည်။
+  const isTargetPostReference = repliedText.includes('Proof Verification Required') || 
+                                repliedText.includes('Target Post') || 
+                                repliedText.includes('WORLD BEST CRYPTO');
 
-  if (!isValidPost) {
+  if (!isTargetPostReference) {
     const errorMsg = await ctx.reply(
       `❌ <b>Invalid Screenshot!</b>\n` +
-      `Please reply directly to the correct target post (WORLD BEST CRYPTO) with its screenshot.`,
+      `Please reply directly to the target post verification message with the correct post screenshot.`,
       { parse_mode: 'HTML', reply_to_message_id: ctx.message.message_id }
     );
     deleteMessageLater(ctx, ctx.chat.id, ctx.message.message_id, 5000);
@@ -193,7 +193,7 @@ bot.on('message:photo', async (ctx) => {
   deleteMessageLater(ctx, ctx.chat.id, successMsg.message_id, 5000);
 });
 
-// 5. Slot Machine Dice Handling (Strict Validation)
+// 5. Slot Machine Dice Handling (Ultra Strict Validation)
 bot.on('message:dice', async (ctx) => {
   if (!ctx.message.dice || ctx.message.dice.emoji !== '🎰') return;
 
@@ -203,12 +203,12 @@ bot.on('message:dice', async (ctx) => {
   const repliedMessage = ctx.message.reply_to_message;
   const repliedText = repliedMessage ? (repliedMessage.text || repliedMessage.caption || '') : '';
 
-  // User တင်ထားသော ဓာတ်ပုံသည် ကိုယ်ပိုင် Screenshot ပုံဖြစ်ပြီး၊ ၎င်းပုံ သို့မဟုတ် မူရင်း Reply ထဲတွင် တရားဝင် Post အချက်အလက်ပါမှ လက်ခံမည်
+  // User တင်ထားသော ဓာတ်ပုံသည် ကိုယ်ပိုင် Screenshot ပုံဖြစ်ပြီး၊ ၎င်းပုံကို Bot ၏ Verification အောင်မြင်ကြောင်း Reply ပေးထားခြင်း (သို့) တရားဝင် Proof Reply ဖြစ်ရမည်
   const isUserValidPhotoProof = repliedMessage && 
     repliedMessage.from && 
     repliedMessage.from.id === ctx.from.id && 
     repliedMessage.photo && 
-    (repliedText.includes('WORLD BEST CRYPTO') || repliedText.includes('Target Post') || repliedMessage.reply_to_message);
+    (repliedMessage.reply_to_message && (repliedMessage.reply_to_message.text || '').includes('Proof Verification Required'));
 
   if (!isUserValidPhotoProof) {
     const postLink = getPostLink(ctx);

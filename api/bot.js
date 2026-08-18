@@ -155,7 +155,7 @@ bot.on('message:photo', async (ctx) => {
                              postText.includes(expectedKeyword) || 
                              quoteText.includes(expectedKeyword);
 
-  // ငွေလွှဲစလစ် (သို့မဟုတ်) Receipt ပုံများဖြစ်ကြောင်း တင်းကျပ်စွာ စစ်ဆေးခြင်း
+  // 1. ငွေလွှဲစလစ် (သို့မဟုတ်) Receipt ပုံများတွင် ပါတတ်သော စာသားများကို တားဆီးရန်
   const lowerCaption = messageCaption.toLowerCase();
   const isReceiptOrInvalidImage = lowerCaption.includes('kbz') || 
                                   lowerCaption.includes('kpay') || 
@@ -164,9 +164,11 @@ bot.on('message:photo', async (ctx) => {
                                   lowerCaption.includes('ks') ||
                                   lowerCaption.includes('bank') ||
                                   lowerCaption.includes('e-receipt') ||
-                                  lowerCaption.includes('ကျပ်');
+                                  lowerCaption.includes('ကျပ်') ||
+                                  lowerCaption.includes('ငွေလွှဲ');
 
-  // အကယ်၍ မူရင်း Post စာသား မမှန်ကန်ပါ (သို့) ငွေလွှဲစလစ်ပုံ တင်လာပါက Verification ပယ်ချမည်
+  // 2. Reaction (အသဲ ❤️ သို့မဟုတ် လက်မ 👍 စသည်ဖြင့်) ပါဝင်ကြောင်း သို့မဟုတ် Proof ပုံစံမှန်ကန်ကြောင်း သေချာစေရန် စစ်ဆေးခြင်း
+  // (အကယ်၍ ဓာတ်ပုံနှင့်အတူ Reaction ပေးထားကြောင်း ညွှန်ပြသော စာသား သို့မဟုတ် အနည်းဆုံး မမှန်ကန်သော ငွေလွှဲစလစ် စာသားများ ကင်းရှင်းရမည်)
   if (!hasCorrectPostText || isReceiptOrInvalidImage) {
     const errorMsg = `❌ <b>Invalid Reaction Proof!</b>\n` +
       `Please upload a valid reaction screenshot (such as ❤️, 👍) on the official post (${expectedKeyword}), not a bank receipt or unrelated image!`;
@@ -180,7 +182,7 @@ bot.on('message:photo', async (ctx) => {
   }
 
   try {
-    // မှန်ကန်သော Reaction Screenshot ဖြစ်မှသာ Verified အဖြစ် Supabase တွင် မှတ်တမ်းတင်မည်
+    // အရာရာ မှန်ကန်မှသာ Verified အဖြစ် Supabase တွင် မှတ်တမ်းတင်မည်
     await supabase.from('users').upsert({
       telegram_id: userId,
       username: rawUsername,

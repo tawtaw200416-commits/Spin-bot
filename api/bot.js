@@ -9,6 +9,9 @@ const BOT_TOKEN = process.env.BOT_TOKEN || '8566391789:AAHxMWzB5EERqVAHI7Uf7rQod
 const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 const bot = new Bot(BOT_TOKEN);
 
+// Bot ပို့ခဲ့သော Verification Prompt များကို မှတ်ထားရန် Memory Storage
+const sentPromptMessages = new Set();
+
 // Sleep Helper Function
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -42,6 +45,7 @@ bot.catch((err) => {
 const deleteMessageLater = (ctx, chatId, messageId, delay = 5000) => {
   setTimeout(async () => {
     try {
+      sentPromptMessages.delete(messageId);
       await ctx.api.deleteMessage(chatId, messageId);
     } catch (e) {
       console.error('Delete message failed:', e);
@@ -89,6 +93,9 @@ bot.command('spin', async (ctx) => {
 
   const sentMsg = await ctx.reply(promptText, { parse_mode: 'HTML', disable_web_page_preview: true });
   
+  // Bot ပို့လိုက်တဲ့ Prompt ရဲ့ message_id ကို မှတ်ထားမည်
+  sentPromptMessages.add(sentMsg.message_id);
+
   if (isComment) {
     deleteMessageLater(ctx, ctx.chat.id, sentMsg.message_id, 5000);
     deleteMessageLater(ctx, ctx.chat.id, ctx.message.message_id, 5000);
@@ -151,7 +158,7 @@ bot.command('broadcast', async (ctx) => {
   }
 });
 
-// 4. Photo Verification Handling (Strictly blocking Bot's own prompt replies)
+// 4. Photo Verification Handling (Strict ID Tracking)
 bot.on('message:photo', async (ctx) => {
   const isComment = ctx.message.reply_to_message || ctx.message.is_topic_message;
   if (!isComment) return;
@@ -161,18 +168,16 @@ bot.on('message:photo', async (ctx) => {
   const displayName = ctx.from.username ? `@${ctx.from.username}` : rawUsername;
 
   const repliedMessage = ctx.message.reply_to_message;
-  const repliedText = repliedMessage ? (repliedMessage.text || repliedMessage.caption || '') : '';
-  const repliedSenderId = repliedMessage?.from?.id;
+  const repliedMessageId = repliedMessage?.message_id;
 
-  // Bot ကိုယ်တိုင် ပို့ထားသော Prompt Message (သို့) Bot ကိုယ်တိုင်ရဲ့ ID နဲ့ Reply ပေးထားခြင်း ဟုတ်မဟုတ် စစ်ဆေးခြင်း
-  const isBotItself = repliedSenderId === ctx.botInfo.id;
-  const hasPromptKeywords = repliedText.includes('Proof Verification Required') || repliedText.includes('Target Post');
+  // Reply လုပ်ထားသော Message ID သည် Bot ပို့ခဲ့သော Prompt Message ထဲတွင် ပါဝင်နေခြင်း ရှိမရှိ စစ်ဆေးခြင်း
+  const isReplyingToBotPrompt = repliedMessageId && sentPromptMessages.has(repliedMessageId);
 
-  // အကယ်၍ Bot ရဲ့ မက်ဆေ့ချ် (သို့) Prompt ကို Reply ပေးထားလျှင် လုံးဝ တားဆီးမည် (Invalid)
-  if (isBotItself || hasPromptKeywords) {
+  // အကယ်၍ Bot ရဲ့ Prompt Message ကို Reply ပေးထားလျှင် (သို့မဟုတ်) မူရင်း Post အစစ်အမှန်မဟုတ်ဘဲ Bot message ကို ညွှန်းနေလျှင် တားဆီးမည်
+  if (isReplyingToBotPrompt) {
     const errorMsg = await ctx.reply(
       `❌ <b>Invalid Screenshot!</b>\n` +
-      `Do not reply to the bot message. Please reply directly to the <b>original channel post</b> with its screenshot.`,
+      `Do not reply to the bot prompt message. Please reply directly to the <b>original channel post</b> with its screenshot.`,
       { parse_mode: 'HTML', reply_to_message_id: ctx.message.message_id }
     );
     deleteMessageLater(ctx, ctx.chat.id, ctx.message.message_id, 5000);
@@ -180,7 +185,6 @@ bot.on('message:photo', async (ctx) => {
     return;
   }
 
-  // မူရင်း Channel Post အစစ်အမှန် ဖြစ်ကြောင်း အတည်ပြုချက်
   const successMsg = await ctx.reply(
     `✅ <b>Verification Successful, ${displayName}!</b>\n` +
     `Your screenshot has been verified. Now you can spin with 🎰!`,
@@ -201,16 +205,15 @@ bot.on('message:dice', async (ctx) => {
   if (!isComment) return;
 
   const repliedMessage = ctx.message.reply_to_message;
-  const repliedText = repliedMessage ? (repliedMessage.text || repliedMessage.caption || '') : '';
-  const repliedSenderId = repliedMessage?.from?.id;
+  const repliedMessageId = repliedMessage?.message_id;
 
-  // User တင်ထားသော ဓာတ်ပုံသည် ကိုယ်ပိုင် Screenshot ပုံဖြစ်ပြီး၊ ၎င်းပုံသည် Bot Prompt ကို Reply ပေးထားခြင်း မဟုတ်ရပါ
+  // User တင်ထားသော ဓာတ်ပုံသည် ကိုယ်ပိုင် Screenshot ပုံဖြစ်ပြီး၊ ၎င်းပုံသည် Bot Prompt ကို Reply ပေးထားခြင်း လုံးဝ မဖြစ်ရပါ
   const isUserValidPhotoProof = repliedMessage && 
     repliedMessage.from && 
     repliedMessage.from.id === ctx.from.id && 
     repliedMessage.photo &&
-    repliedSenderId !== ctx.botInfo.id &&
-    !repliedText.includes('Proof Verification Required');
+    repliedMessageId && 
+    !sentPromptMessages.has(repliedMessageId);
 
   if (!isUserValidPhotoProof) {
     const postLink = getPostLink(ctx);

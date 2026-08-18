@@ -172,7 +172,7 @@ bot.command('broadcast', async (ctx) => {
   }
 });
 
-// 4. Photo Verification Handling (Stores exact comment/post ID and deletes unverified photos instantly)
+// 4. Photo Verification Handling (Stores verification status precisely per comment/post & deletes unverified photos instantly)
 bot.on('message:photo', async (ctx) => {
   const isComment = ctx.message.reply_to_message || ctx.message.is_topic_message;
   
@@ -218,7 +218,7 @@ bot.on('message:photo', async (ctx) => {
 
     const currentBalance = existingUser && existingUser.balance !== null ? parseFloat(existingUser.balance) : 0;
 
-    // Save user verification status along with the target post identifier
+    // Save user verification status along with the target post/comment identifier in Supabase database
     await supabase.from('users').upsert({
       telegram_id: userId,
       username: rawUsername,
@@ -284,6 +284,7 @@ bot.on('message:dice', async (ctx) => {
   const currentSpinPostId = getTargetPostId(ctx);
   const currentSpinPostIdStr = currentSpinPostId ? currentSpinPostId.toString() : 'active';
 
+  // Check user verification status from Supabase database
   let isVerifiedForThisPost = false;
   try {
     const { data: userRecord } = await supabase
@@ -301,7 +302,7 @@ bot.on('message:dice', async (ctx) => {
     console.error("Check verification error:", e);
   }
 
-  // If user has not verified or verification doesn't match this exact comment/post, delete spin immediately
+  // If user has not verified or verification doesn't match this comment/post, delete spin immediately
   if (!isVerifiedForThisPost) {
     try {
       await ctx.api.deleteMessage(ctx.chat.id, ctx.message.message_id);
@@ -325,7 +326,7 @@ bot.on('message:dice', async (ctx) => {
     return;
   }
 
-  // Process the spin successfully since user is fully verified for this specific comment/post
+  // Process the spin successfully since user is fully verified and stored in database for this specific comment/post
   const diceValue = ctx.message.dice.value;
   let replyText = '';
   const winCombination = getSlotResult(diceValue);

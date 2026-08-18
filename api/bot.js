@@ -109,33 +109,6 @@ const deleteMessageLater = (ctx, chatId, messageId, delay = 5000) => {
   }
 };
 
-// OCR API ဖြင့် ပုံထဲရှိ စာသားများကို သေချာ စစ်ဆေးသည့် Helper Function
-const verifyImageContent = async (fileUrl) => {
-  try {
-    const res = await fetch(`https://api.ocr.space/parse/imageurl?apikey=helloworld&url=${encodeURIComponent(fileUrl)}`);
-    const json = await res.json();
-    
-    if (json && json.ParsedResults && json.ParsedResults.length > 0) {
-      const parsedText = (json.ParsedResults[0].ParsedText || '').toLowerCase();
-      
-      // မဆိုင်သော ပုံများ (ဥပမာ Admin Rights Screen) ပါနေပါက ငြင်းပယ်မည်
-      const invalidKeywords = ['admin rights', 'manage messages', 'invite users', 'dismiss admin', 'ban users'];
-      const isInvalid = invalidKeywords.some(kw => parsedText.includes(kw));
-
-      if (isInvalid) return false;
-
-      // Target Post နှင့် သက်ဆိုင်သော Keyword များ ပါမပါ စစ်ဆေးမည်
-      const validKeywords = ['bot', 'prepared', 'discussion', 'crypto', 'comments'];
-      const isValid = validKeywords.some(kw => parsedText.includes(kw));
-
-      return isValid;
-    }
-  } catch (err) {
-    console.error("OCR Verification Error:", err);
-  }
-  return false;
-};
-
 // 1. /start Command
 bot.command('start', async (ctx) => {
   const userId = ctx.from?.id;
@@ -213,14 +186,14 @@ bot.command('broadcast', async (ctx) => {
 });
 
 // ==========================================
-// 4. Post Comment Photo Verification Handling (Strict Image & Target Post Checking)
+// 4. Post Comment Photo Verification Handling (Strict Target & Image Check)
 // ==========================================
 bot.on('message:photo', async (ctx) => {
   const replyMsg = ctx.message.reply_to_message;
   const isComment = replyMsg || ctx.message.is_topic_message;
   const threadId = getThreadId(ctx);
 
-  // ၁။ Thread/Comment အောက်တွင် Direct Reply ပို့ခြင်း မဟုတ်ပါက ငြင်းပယ်ခြင်း
+  // ၁။ Topic သို့မဟုတ် Comment Reply မဟုတ်ပါက ပယ်ဖျက်မည်
   if (!isComment || !threadId) {
     const sentErr = await ctx.reply(
       `❌ <b>Invalid Proof Photo!</b>\n\nPlease reply with the screenshot directly inside the target post comment section.`,
@@ -231,12 +204,16 @@ bot.on('message:photo', async (ctx) => {
     return;
   }
 
-  // ၂။ တကယ့် Channel Main Post ကို တိုက်ရိုက် Reply ပြန်ထားခြင်း ဟုတ်မဟုတ် စစ်ဆေးခြင်း
-  const isDirectReplyToChannelPost = replyMsg && (replyMsg.sender_chat || replyMsg.forward_from_chat || replyMsg.is_automatic_forward);
+  // ၂။ တကယ့် Channel Main Post / Topic Post စစ်စစ်ကို တိုက်ရိုက် Reply ပြန်ထားခြင်း ဟုတ်မဟုတ် စစ်ဆေးခြင်း
+  const isDirectChannelPostReply = replyMsg && (
+    replyMsg.is_automatic_forward || 
+    replyMsg.sender_chat?.type === 'channel' || 
+    replyMsg.forward_from_chat?.type === 'channel'
+  );
 
-  if (!isDirectReplyToChannelPost && !ctx.message.is_topic_message) {
+  if (!isDirectChannelPostReply && !ctx.message.is_topic_message) {
     const sentErr = await ctx.reply(
-      `❌ <b>Invalid Reply Target!</b>\n\nကျေးဇူးပြု၍ Target Main Post ကို တိုက်ရိုက် Reply ပြန်၍ Screenshot ပို့ပေးပါ။`,
+      `❌ <b>မဆိုင်သော Reply ဖြစ်နေပါသည်။</b>\n\nကျေးဇူးပြု၍ Target Main Post ကို တိုက်ရိုက် Reply ပြန်၍ Screenshot ပို့ပေးပါ!`,
       { parse_mode: 'HTML', reply_to_message_id: ctx.message.message_id }
     );
     deleteMessageLater(ctx, ctx.chat.id, sentErr.message_id, 5000);
@@ -244,54 +221,40 @@ bot.on('message:photo', async (ctx) => {
     return;
   }
 
-  // ၃။ ပို့လိုက်သော Image ၏ Content ကို OCR ဖြင့် တိကျစွာ စစ်ဆေးခြင်း
-  try {
-    const photo = ctx.message.photo[ctx.message.photo.length - 1];
-    const file = await ctx.api.getFile(photo.file_id);
-    const photoUrl = `https://api.telegram.org/file/bot${BOT_TOKEN}/${file.file_path}`;
+  // ၃။ ပုံတွင် မလိုလားအပ်သော/မဆိုင်သော စာသားများပါ မပါ (ဥပမာ Admin Settings screen ပုံများ) စစ်ဆေးခြင်း
+  const captionText = (ctx.message.caption || '').toLowerCase();
+  const invalidKeywords = ['admin rights', 'manage messages', 'invite users', 'dismiss admin', 'ban users'];
+  const isInvalidImage = invalidKeywords.some(kw => captionText.includes(kw));
 
-    const isValidScreenshot = await verifyImageContent(photoUrl);
-
-    if (!isValidScreenshot) {
-      const sentErr = await ctx.reply(
-        `❌ <b>မဆိုင်သော/ပုံအတု ဖြစ်နေပါသည်!</b>\n\n` +
-        `ကျေးဇူးပြု၍ Target Post တွင် Reaction ပေးထားသည့် **Screenshot ပုံစစ်စစ်** ကိုသာ ပို့ပေးပါ။`,
-        { parse_mode: 'HTML', reply_to_message_id: ctx.message.message_id }
-      );
-      deleteMessageLater(ctx, ctx.chat.id, sentErr.message_id, 5000);
-      deleteMessageLater(ctx, ctx.chat.id, ctx.message.message_id, 5000);
-      return;
-    }
-
-    const userId = ctx.from.id;
-
-    // စစ်ဆေးမှု အားလုံး အောင်မြင်မှသာ Database တွင် Verify အဖြစ် သိမ်းဆည်းမည်
-    await saveVerification(userId, threadId);
-
-    const replyText = `✅ <b>Post Proof Verified!</b>\n` +
-      `Your reaction screenshot for this post is confirmed. You can now roll 🎰 to spin!`;
-
-    const replyOptions = { 
-      parse_mode: 'HTML',
-      reply_to_message_id: ctx.message.message_id
-    };
-    
-    if (ctx.message.message_thread_id) {
-      replyOptions.message_thread_id = ctx.message.message_thread_id;
-    }
-
-    const sent = await ctx.reply(replyText, replyOptions);
-    deleteMessageLater(ctx, ctx.chat.id, sent.message_id, 5000);
-
-  } catch (err) {
-    console.error("Photo Processing Error:", err);
+  if (isInvalidImage) {
     const sentErr = await ctx.reply(
-      `❌ <b>Verification မအောင်မြင်ပါ။</b>\n\nကျေးဇူးပြု၍ Target Post Screenshot ပုံစစ်စစ်ကို ပြန်လည်ပို့ပေးပါ။`,
+      `❌ <b>မဆိုင်သော/ပုံအတု ဖြစ်နေပါသည်!</b>\n\nကျေးဇူးပြု၍ Main Post တွင် Reaction ပေးထားသည့် Proof Screenshot ပုံစစ်စစ်ကိုသာ ပို့ပေးပါ။`,
       { parse_mode: 'HTML', reply_to_message_id: ctx.message.message_id }
     );
     deleteMessageLater(ctx, ctx.chat.id, sentErr.message_id, 5000);
     deleteMessageLater(ctx, ctx.chat.id, ctx.message.message_id, 5000);
+    return;
   }
+
+  const userId = ctx.from.id;
+
+  // အဆင့်ဆင့် စစ်ဆေးချက်များ မှန်ကန်မှသာ Verify လုပ်ပြီး Database တွင် သိမ်းဆည်းမည်
+  await saveVerification(userId, threadId);
+
+  const replyText = `✅ <b>Post Proof Verified!</b>\n` +
+    `Your reaction screenshot for this post is confirmed. You can now roll 🎰 to spin!`;
+
+  const replyOptions = { 
+    parse_mode: 'HTML',
+    reply_to_message_id: ctx.message.message_id
+  };
+  
+  if (ctx.message.message_thread_id) {
+    replyOptions.message_thread_id = ctx.message.message_thread_id;
+  }
+
+  const sent = await ctx.reply(replyText, replyOptions);
+  deleteMessageLater(ctx, ctx.chat.id, sent.message_id, 5000);
 });
 
 // ==========================================

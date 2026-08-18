@@ -207,6 +207,7 @@ bot.on('message:photo', async (ctx) => {
   
   const targetPostId = getTargetPostId(ctx);
   const targetPostIdStr = targetPostId ? String(targetPostId) : 'active';
+  const postLink = getPostLink(ctx);
 
   const photoCaption = ctx.message.caption || '';
   const isValidCaption = photoCaption.includes('WORLD BEST CRYPTO') || photoCaption.includes('game link');
@@ -218,9 +219,11 @@ bot.on('message:photo', async (ctx) => {
 
     const errorMsg = await ctx.reply(
       `❌ <b>Invalid Verification!</b>\n` +
-      `Your screenshot was rejected because the caption is incorrect! Please include caption <code>WORLD BEST CRYPTO</code> and reaction (❤️ / 👍).`,
+      `Your screenshot was rejected because the caption is incorrect! Please include caption <code>WORLD BEST CRYPTO</code> and reaction (❤️ / 👍).\n\n` +
+      `🔗 <b>Target Post:</b> <a href="${postLink}">Click Here To View Post</a>`,
       { 
         parse_mode: 'HTML', 
+        disable_web_page_preview: true,
         reply_to_message_id: ctx.message.reply_to_message ? ctx.message.reply_to_message.message_id : undefined,
         message_thread_id: ctx.message.message_thread_id
       }
@@ -238,7 +241,6 @@ bot.on('message:photo', async (ctx) => {
 
     const currentBalance = existingUser && existingUser.balance !== null ? parseFloat(existingUser.balance) : 0;
 
-    // Database တွင် Complete Verified User အဖြစ် သိမ်းဆည်းမည်
     await supabase.from('users').upsert({
       telegram_id: userId,
       username: rawUsername,
@@ -250,12 +252,13 @@ bot.on('message:photo', async (ctx) => {
     console.error("Supabase verification save error:", e);
   }
 
-  // Complete Verified User အဖြစ် နာမည်နှင့်တကွ အကြောင်းပြန်မည်
   const successMsg = await ctx.reply(
     `✅ <b>Complete Verified User: ${displayName}!</b>\n` +
-    `Your screenshot is successfully verified. You can now spin freely in this post thread without restriction! 🎰`,
+    `Your screenshot is successfully verified. You can now spin freely in this post thread without restriction! 🎰\n\n` +
+    `🔗 <b>Target Post:</b> <a href="${postLink}">Click Here To View Post</a>`,
     { 
       parse_mode: 'HTML',
+      disable_web_page_preview: true,
       reply_to_message_id: ctx.message.reply_to_message ? ctx.message.reply_to_message.message_id : undefined,
       message_thread_id: ctx.message.message_thread_id
     }
@@ -273,8 +276,10 @@ bot.on('message:dice', async (ctx) => {
   const rawUsername = ctx.from.username || ctx.from.first_name || `ID: ${userId}`;
   const displayName = ctx.from.username ? `@${ctx.from.username}` : rawUsername;
 
+  const currentSpinPostId = getTargetPostId(ctx);
+  const currentSpinPostIdStr = currentSpinPostId ? String(currentSpinPostId) : 'active';
+
   let isVerifiedForThisPost = false;
-  let currentSpinPostIdStr = 'active';
 
   try {
     const { data: userRecord } = await supabase
@@ -283,16 +288,17 @@ bot.on('message:dice', async (ctx) => {
       .eq('telegram_id', userId)
       .maybeSingle();
 
-    // Complete Verified User ဖြစ်ပြီးသားဖြစ်ပါက အဆိုပါ post thread တွင် ဆက်လက် spin လှည့်ခွင့်ပြုမည်
+    // အကယ်၍ user သည် verify ပြီးသားဖြစ်ပြီး လက်ရှိ post thread (verified_post_id) နှင့် တူညီနေပါက spin လှည့်ခွင့်ပေးမည်
     if (userRecord && userRecord.is_verified === true) {
-      isVerifiedForThisPost = true;
-      currentSpinPostIdStr = userRecord.verified_post_id || 'active';
+      if (!userRecord.verified_post_id || userRecord.verified_post_id === currentSpinPostIdStr || currentSpinPostIdStr === 'active') {
+        isVerifiedForThisPost = true;
+      }
     }
   } catch (e) {
     console.error("Check verification error:", e);
   }
 
-  // မ verify ရသေးသော user များအတွက်သာ spin ကိုဖျက်ပြီး ပုံပို့ရန် တောင်းဆိုမည်
+  // မ verify ရသေးလျှင် သို့မဟုတ် Post အသစ်ပြောင်းသွားလျှင် spin ကိုဖျက်ပြီး ပုံပို့ရန် တောင်းဆိုမည်
   if (!isVerifiedForThisPost) {
     try {
       await ctx.api.deleteMessage(ctx.chat.id, ctx.message.message_id);
@@ -302,7 +308,7 @@ bot.on('message:dice', async (ctx) => {
 
     const postLink = getPostLink(ctx);
     const warningText = `⚠️ <b>Proof Verification Required!</b>\n\n` +
-      `Your spin was deleted because you haven't verified for this post yet! Please send a screenshot reply with reaction (❤️ / 👍) and caption <code>WORLD BEST CRYPTO</code> first!\n\n` +
+      `Your spin was deleted because this is a new post or you haven't verified for this post yet! Please send a screenshot reply with reaction (❤️ / 👍) and caption <code>WORLD BEST CRYPTO</code> first!\n\n` +
       `🔗 <b>Target Post:</b> <a href="${postLink}">Click Here To View Post</a>`;
 
     const warningMsg = await ctx.reply(warningText, { 
@@ -316,7 +322,7 @@ bot.on('message:dice', async (ctx) => {
     return;
   }
 
-  // Complete Verified User ဖြစ်ပါက မဖျက်ဘဲ ဆက်လက် spin လှည့်ခွင့်ပေးမည်
+  // Verify ပြီးသား Complete User ဖြစ်ပြီး Post မပြောင်းသေးပါက spin ကို မဖျက်ဘဲ ဆက်လက်ကစားခွင့်ပေးမည်
   const diceValue = ctx.message.dice.value;
   let replyText = '';
   const winCombination = getSlotResult(diceValue);

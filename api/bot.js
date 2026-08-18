@@ -84,13 +84,14 @@ bot.command('spin', async (ctx) => {
   const postLink = getPostLink(ctx);
   
   const promptText = `⚠️ <b>Proof Verification Required!</b>\n\n` +
-    `Please react (❤️/👍) to the main post and upload the screenshot proof first.\n\n` +
+    `Please react (❤️/👍) to the main post and upload the correct screenshot proof first.\n\n` +
     `🔗 <b>Target Post:</b> <a href="${postLink}">Click Here To View Post</a>`;
 
   const sentMsg = await ctx.reply(promptText, { parse_mode: 'HTML', disable_web_page_preview: true });
   
   if (isComment) {
     deleteMessageLater(ctx, ctx.chat.id, sentMsg.message_id, 5000);
+    deleteMessageLater(ctx, ctx.chat.id, ctx.message.message_id, 5000);
   }
 });
 
@@ -150,7 +151,7 @@ bot.command('broadcast', async (ctx) => {
   }
 });
 
-// 4. Photo Verification Handling inside Comment
+// 4. Photo Verification Handling inside Comment (Strict Checking)
 bot.on('message:photo', async (ctx) => {
   const isComment = ctx.message.reply_to_message || ctx.message.is_topic_message;
   if (!isComment) return;
@@ -159,17 +160,18 @@ bot.on('message:photo', async (ctx) => {
   const rawUsername = ctx.from.username || ctx.from.first_name || `ID: ${userId}`;
   const displayName = ctx.from.username ? `@${ctx.from.username}` : rawUsername;
 
-  // မူရင်း Post ၏ စာသား (ဥပမာ - WORLD BEST CRYPTO) ပါဝင်မှုကို စစ်ဆေးခြင်း
+  // Reply လုပ်ထားသော မူရင်း Post ၏ စာသားကို တိကျစွာ ရယူစစ်ဆေးခြင်း
   const repliedMessage = ctx.message.reply_to_message;
   const repliedText = repliedMessage ? (repliedMessage.text || repliedMessage.caption || '') : '';
   
-  // Post ၏ စာသားအနည်းငယ် သို့မဟုတ် အဓိက Keywords ပါဝင်မှု ရှိမရှိ စစ်ဆေးမည်
-  const isTargetPostProof = repliedText.includes('WORLD BEST CRYPTO') || (repliedMessage && repliedMessage.forward_origin);
+  // Post ၏ တရားဝင် စာသားအစစ် (ဥပမာ - WORLD BEST CRYPTO) ပါဝင်မှုကို တင်းကျပ်စွာ စစ်ဆေးမည်
+  const hasValidPostText = repliedText.includes('WORLD BEST CRYPTO');
 
-  if (!isTargetPostProof) {
+  // အကယ်၍ မှန်ကန်သော Post စာသား မပါရှိပါက (သို့မဟုတ် တခြားပုံများဖြစ်နေပါက)
+  if (!hasValidPostText) {
     const errorMsg = await ctx.reply(
       `❌ <b>Invalid Screenshot!</b>\n` +
-      `Please upload the correct screenshot containing the target post's text.`,
+      `Please reply directly to the target post with its correct text screenshot.`,
       { parse_mode: 'HTML', reply_to_message_id: ctx.message.message_id }
     );
     deleteMessageLater(ctx, ctx.chat.id, ctx.message.message_id, 5000);
@@ -177,6 +179,7 @@ bot.on('message:photo', async (ctx) => {
     return;
   }
 
+  // အကယ်၍ မှန်ကန်ပါက Verification အောင်မြင်ကြောင်းပြမည် (ထိုဓာတ်ပုံသည် valid proof ဖြစ်သွားမည်)
   const successMsg = await ctx.reply(
     `✅ <b>Verification Successful, ${displayName}!</b>\n` +
     `Your screenshot has been verified. Now you can spin with 🎰!`,
@@ -186,11 +189,10 @@ bot.on('message:photo', async (ctx) => {
     }
   );
   
-  deleteMessageLater(ctx, ctx.chat.id, ctx.message.message_id, 5000);
   deleteMessageLater(ctx, ctx.chat.id, successMsg.message_id, 5000);
 });
 
-// 5. Slot Machine Dice Handling
+// 5. Slot Machine Dice Handling (Strict Verification Validation)
 bot.on('message:dice', async (ctx) => {
   if (!ctx.message.dice || ctx.message.dice.emoji !== '🎰') return;
 
@@ -198,17 +200,22 @@ bot.on('message:dice', async (ctx) => {
   if (!isComment) return;
 
   const repliedMessage = ctx.message.reply_to_message;
-  
-  // Reply လုပ်ထားသော မူရင်းစာသည် ကိုယ့်ရဲ့ Verification အောင်မြင်ထားသည့် ဓာတ်ပုံ (သို့) Post ဖြစ်မဖြစ် စစ်ဆေးမည်
-  const hasUserSentValidPhotoBefore = repliedMessage && 
+  const repliedText = repliedMessage ? (repliedMessage.text || repliedMessage.caption || '') : '';
+
+  // Reply လုပ်ထားသော မူရင်းစာသည် User ကိုယ်တိုင် ပို့ထားသည့် ဓာတ်ပုံဖြစ်ပြီး ၎င်းဓာတ်ပုံက တရားဝင် Post ကို Reply ပေးထားခြင်းဖြစ်ရမည်
+  const isUserPhoto = repliedMessage && 
     repliedMessage.from && 
     repliedMessage.from.id === ctx.from.id && 
     repliedMessage.photo;
 
-  if (!hasUserSentValidPhotoBefore) {
+  // ထို့ပြင် မူရင်း Post တွင် သတ်မှတ်ထားသော စာသားအစစ်အမှန် ပါဝင်မှသာ အောင်မြင်မည်
+  const hasValidProofContext = isUserPhoto && repliedMessage.reply_to_message && 
+    ((repliedMessage.reply_to_message.text || repliedMessage.reply_to_message.caption || '').includes('WORLD BEST CRYPTO'));
+
+  if (!hasValidProofContext) {
     const postLink = getPostLink(ctx);
     const warningText = `⚠️ <b>Proof Verification Required!</b>\n\n` +
-      `Please react (❤️/👍) to the main post and upload the correct screenshot proof first.\n\n` +
+      `Please upload the correct target post screenshot first before spinning!\n\n` +
       `🔗 <b>Target Post:</b> <a href="${postLink}">Click Here To View Post</a>`;
 
     const warningMsg = await ctx.reply(warningText, { 
@@ -217,11 +224,13 @@ bot.on('message:dice', async (ctx) => {
       reply_to_message_id: ctx.message.message_id 
     });
 
+    // မအောင်မြင်ပါက User ၏ Spin (🎲) မက်ဆေ့ချ်နှင့် Bot ၏ သတိပေးချက်ကို ၅ စက္ကန့်အတွင်း ဖျက်မည်
     deleteMessageLater(ctx, ctx.chat.id, ctx.message.message_id, 5000);
     deleteMessageLater(ctx, ctx.chat.id, warningMsg.message_id, 5000);
     return;
   }
 
+  // Verification အောင်မြင်ပြီးမှသာ Spin ရလဒ်တွက်ချက်ပြီး Balance ပေါင်းပေးမည်
   const diceValue = ctx.message.dice.value;
   const userId = ctx.from.id;
   
@@ -290,8 +299,6 @@ bot.on('message:dice', async (ctx) => {
   }
 
   const sentMsg = await ctx.reply(replyText, replyOptions);
-  
-  deleteMessageLater(ctx, ctx.chat.id, ctx.message.message_id, 5000);
   deleteMessageLater(ctx, ctx.chat.id, sentMsg.message_id, 5000);
 });
 

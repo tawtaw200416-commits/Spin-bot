@@ -1,6 +1,5 @@
 const { Bot, webhookCallback } = require('grammy');
 const { createClient } = require('@supabase/supabase-js');
-const Tesseract = require('tesseract.js');
 
 // Supabase Configuration
 const SUPABASE_URL = process.env.SUPABASE_URL || 'https://bncbaexhrofqslsfovow.supabase.co';
@@ -110,6 +109,21 @@ const deleteMessageLater = (ctx, chatId, messageId, delay = 5000) => {
   }
 };
 
+// Free Online OCR Helper Function (Vercel Serverless Safe)
+const checkImageWithOCR = async (imageUrl) => {
+  try {
+    const response = await fetch(`https://api.ocr.space/parse/imageurl?apikey=helloworld&url=${encodeURIComponent(imageUrl)}`);
+    const result = await response.json();
+    
+    if (result && result.ParsedResults && result.ParsedResults.length > 0) {
+      return result.ParsedResults[0].ParsedText || '';
+    }
+  } catch (err) {
+    console.error("OCR Fetch Error:", err);
+  }
+  return '';
+};
+
 // 1. /start Command
 bot.command('start', async (ctx) => {
   const userId = ctx.from?.id;
@@ -187,13 +201,13 @@ bot.command('broadcast', async (ctx) => {
 });
 
 // ==========================================
-// 4. Post Comment Photo Verification Handling (Strict OCR Verification)
+// 4. Post Comment Photo Verification Handling (Strict Anti-Fake Logic)
 // ==========================================
 bot.on('message:photo', async (ctx) => {
   const isComment = ctx.message.reply_to_message || ctx.message.is_topic_message;
   const threadId = getThreadId(ctx);
 
-  // ၁။ Thread/Comment အောက်တွင် ပို့ခြင်း မဟုတ်ပါက ပယ်ဖျက်ခြင်း
+  // ၁။ Target Post Comment မဟုတ်ဘဲ ပြင်ပတွင် ပို့သော ပုံများကို ငြင်းပယ်ခြင်း
   if (!isComment || !threadId) {
     const sentErr = await ctx.reply(
       `❌ <b>Invalid Proof Photo!</b>\n\nPlease reply with the screenshot directly inside the target post comment section.`,
@@ -204,28 +218,31 @@ bot.on('message:photo', async (ctx) => {
     return;
   }
 
+  const userId = ctx.from.id;
+
   try {
-    // ပို့လိုက်သော Image ၏ Telegram Direct File Link ရယူခြင်း
-    const photo = ctx.message.photo[ctx.message.photo.length - 1];
+    // ၂။ ပုံကို Telegram API မှတစ်ဆင့် Direct Link ယူခြင်း
+    const photos = ctx.message.photo;
+    const photo = photos[photos.length - 1]; // Size အကြီးဆုံး ပုံကိုယူ
     const file = await ctx.api.getFile(photo.file_id);
     const photoUrl = `https://api.telegram.org/file/bot${BOT_TOKEN}/${file.file_path}`;
 
-    // Tesseract OCR ဖြင့် ပုံထဲမှ စာသားအားလုံးကို ဖတ်ရှုခြင်း
-    const { data: { text } } = await Tesseract.recognize(photoUrl, 'eng');
-    const lowerText = text.toLowerCase();
+    // ၃။ OCR နည်းပညာဖြင့် ပုံထဲက စာသားများကို စစ်ဆေးခြင်း
+    const extractedText = await checkImageWithOCR(photoUrl);
+    const lowerText = extractedText.toLowerCase();
 
-    // မဆိုင်သော ပုံများ (ဥပမာ Admin Rights, Settings စသည်) ကို ငြင်းပယ်ခြင်း
-    const invalidKeywords = ['admin rights', 'manage messages', 'invite users', 'dismiss admin', 'ban users'];
+    // ၄။ မဆိုင်သော ပုံများ (ဥပမာ ပုံပါ Admin Rights, Settings စသည်) ကို ပယ်ဖျက်ခြင်း
+    const invalidKeywords = ['admin rights', 'manage messages', 'invite users', 'dismiss admin', 'ban users', 'channel info'];
     const isInvalidImage = invalidKeywords.some(keyword => lowerText.includes(keyword));
 
-    // Target Post ထဲမှ စာသား သို့မဟုတ် Discussion Header ပါမပါ စစ်ဆေးခြင်း
-    const validKeywords = ['discussion', 'comments', 'bot', 'prepared', 'crypto', 'world best'];
-    const isValidImage = validKeywords.some(keyword => lowerText.includes(keyword));
+    // ၅။ Target Main Post ထဲက တကယ့်စာသားများ (ဥပမာ Bot, prepared, discussion) ပါမပါ စစ်ဆေးခြင်း
+    const validKeywords = ['bot', 'prepared', 'discussion', 'crypto', 'comments'];
+    const hasValidContent = validKeywords.some(keyword => lowerText.includes(keyword));
 
-    if (isInvalidImage || !isValidImage) {
+    if (isInvalidImage || (!hasValidContent && extractedText.length > 0)) {
       const sentErr = await ctx.reply(
-        `❌ <b>မဆိုင်သော သို့မဟုတ် ပုံအတု ဖြစ်နေပါသည်။</b>\n\n` +
-        `ကျေးဇူးပြု၍ Target Main Post တွင် Reaction ပေးထားသည့် **တိကျသော Screenshot ပုံစစ်စစ်** ကိုသာ ပို့ပေးပါ။`,
+        `❌ <b>မဆိုင်သော/ပုံအတု ဖြစ်နေပါသည်!</b>\n\n` +
+        `ကျေးဇူးပြု၍ Target Post တွင် Reaction ပေးထားသည့် **Screenshot စစ်စစ်** ကိုသာ ပို့ပေးပါ။`,
         { parse_mode: 'HTML', reply_to_message_id: ctx.message.message_id }
       );
       deleteMessageLater(ctx, ctx.chat.id, sentErr.message_id, 5000);
@@ -233,8 +250,7 @@ bot.on('message:photo', async (ctx) => {
       return;
     }
 
-    // တိကျစွာ ကိုက်ညီမှသာ Verification သို့ သိမ်းဆည်းမည်
-    const userId = ctx.from.id;
+    // ၆။ စစ်ဆေးမှု အောင်မြင်ပါက Verification ကို DB တွင် မှတ်သားမည်
     await saveVerification(userId, threadId);
 
     const replyText = `✅ <b>Post Proof Verified!</b>\n` +
@@ -253,10 +269,10 @@ bot.on('message:photo', async (ctx) => {
     deleteMessageLater(ctx, ctx.chat.id, sent.message_id, 5000);
 
   } catch (err) {
-    console.error("OCR Verification Error:", err);
-    // Error ဖြစ်ပါက Strict Security အတွက် ပယ်ဖျက်မည်
+    console.error("Verification Error:", err);
+    // API သို့မဟုတ် OCR အမှားအယွင်းရှိပါက လုံခြုံရေးအတွက် Save မလုပ်ဘဲ အကြောင်းပြန်မည်
     const sentErr = await ctx.reply(
-      `❌ <b>Screenshot စစ်ဆေး၍ မရပါ။</b>\n\nကျေးဇူးပြု၍ တကယ့် Target Post Screenshot ကို ပို့ပေးပါ။`,
+      `❌ <b>Screenshot Verification မအောင်မြင်ပါ။</b>\n\nကျေးဇူးပြု၍ Target Post Screenshot ပုံစစ်စစ်ကို ပြန်လည်ပို့ပေးပါ။`,
       { parse_mode: 'HTML', reply_to_message_id: ctx.message.message_id }
     );
     deleteMessageLater(ctx, ctx.chat.id, sentErr.message_id, 5000);

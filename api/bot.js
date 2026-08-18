@@ -163,7 +163,7 @@ bot.on('message:photo', async (ctx) => {
                                   lowerCaption.includes('ကျပ်') ||
                                   lowerCaption.includes('ငွေလွှဲ');
 
-  // အကယ်၍ Post စာသား မမှန်ကန်ပါက (သို့မဟုတ်) ငွေလွှဲစလစ်ဖြစ်နေပါက User ပုံကိုပါ ချက်ချင်းဖျက်မည်
+  // အကယ်၍ Post စာသား မမှန်ကန်ပါက (သို့မဟုတ်) ငွေလွှဲစလစ်/မဆိုင်သောပုံဖြစ်နေပါက User ပုံကိုပါ ချက်ချင်းဖျက်မည်
   if (!hasCorrectPostText || isReceiptOrInvalidImage) {
     try {
       await ctx.api.deleteMessage(ctx.chat.id, ctx.message.message_id);

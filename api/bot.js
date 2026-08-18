@@ -132,7 +132,7 @@ bot.command('broadcast', async (ctx) => {
 });
 
 // ==========================================
-// 4. Handle Photo (Comment ထဲတွင် ပုံဖြင့် Proof တင်စစ်ဆေးခြင်း)
+// 4. Handle Photo (Comment ထဲတွင် ပုံဖြင့် Proof တင်စစ်ဆေးခြင်း - ငွေလွှဲစလစ် တားဆီးရန်)
 // ==========================================
 bot.on('message:photo', async (ctx) => {
   const isComment = ctx.message.reply_to_message || ctx.message.is_topic_message;
@@ -155,7 +155,7 @@ bot.on('message:photo', async (ctx) => {
                              postText.includes(expectedKeyword) || 
                              quoteText.includes(expectedKeyword);
 
-  // ငွေလွှဲစလစ် (သို့မဟုတ်) မသက်ဆိုင်သော Receipt ပုံများဖြစ်ကြောင်း စစ်ဆေးရန် Keywords များ
+  // ငွေလွှဲစလစ် (သို့မဟုတ်) Receipt ပုံများဖြစ်ကြောင်း တင်းကျပ်စွာ စစ်ဆေးခြင်း
   const lowerCaption = messageCaption.toLowerCase();
   const isReceiptOrInvalidImage = lowerCaption.includes('kbz') || 
                                   lowerCaption.includes('kpay') || 
@@ -163,12 +163,13 @@ bot.on('message:photo', async (ctx) => {
                                   lowerCaption.includes('receipt') ||
                                   lowerCaption.includes('ks') ||
                                   lowerCaption.includes('bank') ||
-                                  lowerCaption.includes('e-receipt');
+                                  lowerCaption.includes('e-receipt') ||
+                                  lowerCaption.includes('ကျပ်');
 
-  // အကယ်၍ Post စာသား မမှန်ကန်ပါ (သို့) ငွေလွှဲစလစ်ပုံ တင်လာပါက Verification ပယ်ချမည်
+  // အကယ်၍ မူရင်း Post စာသား မမှန်ကန်ပါ (သို့) ငွေလွှဲစလစ်ပုံ တင်လာပါက Verification ပယ်ချမည်
   if (!hasCorrectPostText || isReceiptOrInvalidImage) {
     const errorMsg = `❌ <b>Invalid Reaction Proof!</b>\n` +
-      `The screenshot does not match the official post (${expectedKeyword}) or is an invalid image (like receipts). Please upload the correct reaction proof!`;
+      `Please upload a valid reaction screenshot (such as ❤️, 👍) on the official post (${expectedKeyword}), not a bank receipt or unrelated image!`;
     
     const sentErr = await ctx.reply(errorMsg, {
       parse_mode: 'HTML',

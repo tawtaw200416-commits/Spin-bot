@@ -23,10 +23,10 @@ const getSlotResult = (value) => {
   let r3 = Math.floor(v / 16) % 4;
 
   const symbols = {
-    0: { name: '🏷️ BAR BAR BAR', reward: 0.00080 },    // BAR = 0.00080 GRAM
-    1: { name: '🍇 🍇 🍇',       reward: 0.00050 },   // Grape = 0.00050 GRAM
-    2: { name: '🍋 🍋 🍋',       reward: 0.00030 },   // Lemon = 0.00030 GRAM
-    3: { name: '7️⃣ 7️⃣ 7️⃣ (Jackpot)', reward: 0.0010 } // 777 = 0.0010 GRAM
+    0: { name: '🏷️ BAR BAR BAR', reward: 0.00000 },    // BAR = 0.00000 GRAM
+    1: { name: '🍇 🍇 🍇',       reward: 0.00000 },   // Grape = 0.00000 GRAM
+    2: { name: '🍋 🍋 🍋',       reward: 0.00000 },   // Lemon = 0.00000 GRAM
+    3: { name: '7️⃣ 7️⃣ 7️⃣ (Jackpot)', reward: 0.0000 } // 777 = 0.0000 GRAM
   };
 
   if (r1 === r2 && r2 === r3) {

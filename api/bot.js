@@ -192,10 +192,11 @@ bot.on('message:photo', async (ctx) => {
   const isComment = ctx.message.reply_to_message || ctx.message.is_topic_message;
   const threadId = getThreadId(ctx);
 
-  // သက်ဆိုင်ရာ Target Post Comment / Thread မဟုတ်ဘဲ ပြင်ပတွင် ပို့သောပုံများကို ငြင်းပယ်ခြင်း
+  // မဆိုင်သည့် ပုံများ သို့မဟုတ် Direct Reply မဟုတ်သည့် ပုံများကို စစ်ဆေး၍ ပြန်လည် ပို့ခိုင်းခြင်း
   if (!isComment || !threadId) {
     const sentErr = await ctx.reply(
-      `❌ <b>Invalid Proof Photo!</b>\n\nPlease reply with the screenshot directly inside the target post comment section.`,
+      `❌ <b>Invalid Proof Photo!</b>\n\n` +
+      `ကျေးဇူးပြု၍ သက်ဆိုင်ရာ Main Post အောက်တွင် Reaction (❤️/👍) ပေးထားသော Screenshot ပုံကိုသာ Reply ပြုလုပ်၍ ပြန်လည်ပို့ပေးပါ။`,
       { parse_mode: 'HTML', reply_to_message_id: ctx.message.message_id }
     );
     deleteMessageLater(ctx, ctx.chat.id, sentErr.message_id, 5000);
@@ -205,7 +206,7 @@ bot.on('message:photo', async (ctx) => {
 
   const userId = ctx.from.id;
 
-  // User ၏ ပုံပို့ဆောင်မှုကို အတည်ပြုပြီး Memory + Database တွင် တိကျစွာ မှတ်သားခြင်း
+  // Verification အောင်မြင်ကြောင်း မှတ်သားခြင်း
   await saveVerification(userId, threadId);
 
   const replyText = `✅ <b>Post Proof Verified!</b>\n` +
@@ -234,7 +235,7 @@ bot.on('message:dice', async (ctx) => {
   const threadId = getThreadId(ctx);
   const userId = ctx.from.id;
 
-  // သက်ဆိုင်ရာ Post Thread အောက် မဟုတ်ပါက သို့မဟုတ် Verification မရှိသေးပါက စစ်ဆေးခြင်း
+  // Verification ရှိမရှိ စစ်ဆေးခြင်း
   const verified = threadId ? await isUserVerified(userId, threadId) : false;
 
   if (!isComment || !threadId || !verified) {

@@ -90,11 +90,11 @@ bot.command('start', async (ctx) => {
 bot.command('spin', async (ctx) => {
   const postLink = getPostLink(ctx);
   const promptText = `⚠️ <b>Proof Verification Required!</b>\n\n` +
-    `Please react to the original channel post (❤️ / 👍) and reply directly to that post with your screenshot!\n\n` +
+    `Please send your screenshot with the exact text caption: <code>WORLD BEST CRYPTO</code> to verify your post reaction!\n\n` +
     `🔗 <b>Target Post:</b> <a href="${postLink}">Click Here To View Post</a>`;
 
   const sent = await ctx.reply(promptText, { parse_mode: 'HTML', disable_web_page_preview: true });
-  deleteMessageLater(ctx, ctx.chat.id, sent.message_id, 10000);
+  deleteMessageLater(ctx, ctx.chat.id, sent.message_id, 15000);
 });
 
 // 3. Admin Broadcast Command
@@ -151,7 +151,7 @@ bot.command('broadcast', async (ctx) => {
   }
 });
 
-// 4. Strict Photo Verification Handling
+// 4. Strict Caption & Photo Verification Handling
 bot.on('message:photo', async (ctx) => {
   const isComment = ctx.message.reply_to_message || ctx.message.is_topic_message;
   if (!isComment) return;
@@ -160,15 +160,16 @@ bot.on('message:photo', async (ctx) => {
   const rawUsername = ctx.from.username || ctx.from.first_name || `ID: ${userId}`;
   const displayName = ctx.from.username ? `@${ctx.from.username}` : rawUsername;
 
-  const repliedMessage = ctx.message.reply_to_message;
-  const repliedUserId = repliedMessage?.from?.id;
-  const botId = ctx.me.id;
+  // ဓာတ်ပုံနှင့်အတူ ပါလာသော စာသား (Caption) ကို တိုက်ရိုက်စစ်ဆေးမည်
+  const photoCaption = ctx.message.caption || '';
 
-  // STRICT CHECK: If the user replied directly to the Bot's message (like warning/prompt), reject it immediately!
-  if (repliedUserId === botId) {
+  // User တင်လိုက်တဲ့ ပုံမှာ သတ်မှတ်ထားသော စာသား အစစ်အမှန် (ဥပမာ - WORLD BEST CRYPTO) Caption ပါမှသာ လက်ခံမည်
+  const isValidCaption = photoCaption.includes('WORLD BEST CRYPTO') || photoCaption.includes('game link');
+
+  if (!isValidCaption) {
     const errorMsg = await ctx.reply(
       `❌ <b>Invalid Verification!</b>\n` +
-      `You replied to the bot's message instead of the channel post. Please reply directly to the original post with your screenshot!`,
+      `ကျေးဇူးပြု၍ ပုံတင်သည့်အခါ Caption တွင် <code>WORLD BEST CRYPTO</code> ဆိုသည့် စာသားကို တိကျစွာ ရေးထည့်ပြီးမှ ပို့ပေးပါ။`,
       { parse_mode: 'HTML', reply_to_message_id: ctx.message.message_id }
     );
     deleteMessageLater(ctx, ctx.chat.id, ctx.message.message_id, 5000);
@@ -176,24 +177,7 @@ bot.on('message:photo', async (ctx) => {
     return;
   }
 
-  const repliedText = repliedMessage ? (repliedMessage.text || repliedMessage.caption || '') : '';
-
-  // Additional check: Ensure the replied message contains the required channel post keyword
-  const isRealChannelPost = repliedText.includes('WORLD BEST CRYPTO') || 
-                            (repliedText.includes('game link') && repliedText.includes('invite code'));
-
-  if (!isRealChannelPost) {
-    const errorMsg = await ctx.reply(
-      `❌ <b>Invalid Screenshot!</b>\n` +
-      `This is not a valid channel post. Please reply to the correct post.`,
-      { parse_mode: 'HTML', reply_to_message_id: ctx.message.message_id }
-    );
-    deleteMessageLater(ctx, ctx.chat.id, ctx.message.message_id, 5000);
-    deleteMessageLater(ctx, ctx.chat.id, errorMsg.message_id, 5000);
-    return;
-  }
-
-  // Save verification status to Supabase
+  // အကယ်၍ Caption မှန်ကန်ပါက Supabase တွင် is_verified = true လို့ မှတ်မည်
   try {
     await supabase.from('users').upsert({
       telegram_id: userId,
@@ -247,7 +231,7 @@ bot.on('message:dice', async (ctx) => {
   if (!isVerified) {
     const postLink = getPostLink(ctx);
     const warningText = `⚠️ <b>Proof Verification Required!</b>\n\n` +
-      `Please react to the original post (❤️ / 👍) and send your screenshot reply first!\n\n` +
+      `Please send your screenshot with caption <code>WORLD BEST CRYPTO</code> first!\n\n` +
       `🔗 <b>Target Post:</b> <a href="${postLink}">Click Here To View Post</a>`;
 
     const warningMsg = await ctx.reply(warningText, { 

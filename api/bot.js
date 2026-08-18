@@ -163,7 +163,7 @@ bot.on('message:photo', async (ctx) => {
                                   lowerCaption.includes('ကျပ်') ||
                                   lowerCaption.includes('ငွေလွှဲ');
 
-  // အကယ်၍ သက်ဆိုင်ရာ Post စာသား တစ်ကြောင်းနှစ်ကြောင်း အပြည့်အစုံ မပါဝင်ပါက (သို့မဟုတ်) မှားယွင်းသောပုံ/ငွေလွှဲစလစ်ဖြစ်နေပါက
+  // အကယ်၍ သက်ဆိုင်ရာ Post စာသား တစ်ကြောင်းနှစ်ကြောင်း အပြည့်အစုံ မပါဝင်ပါက (သို့မဟုတ်) ငွေလွှဲစလစ်/မှားယွင်းသောပုံ ဖြစ်နေပါက
   if (!hasCorrectPostText || isReceiptOrInvalidImage) {
     // 1. User တင်လိုက်သော ပုံ (Photo Message) ကို ချက်ချင်းဖျက်မည်
     try {
@@ -175,7 +175,7 @@ bot.on('message:photo', async (ctx) => {
     const errorMsg = `❌ <b>Invalid Post Proof!</b>\n` +
       `The screenshot does not match the official post (${expectedKeyword}). Please upload a valid screenshot showing your reaction (❤️, 👍, or rec) on the correct post!`;
     
-    // 2. သတိပေးစာကို ပို့ပြီး ၅ စက္ကန့်ကြာမှ အလိုအလျောက် ပြန်ဖျက်မည်
+    // 2. သတိပေးစာကို ပို့ပြီး ၅ စက္ကန့် (5s) ကြာမှ အလိုအလျောက် ပြန်ဖျက်မည်
     const sentErr = await ctx.reply(errorMsg, {
       parse_mode: 'HTML'
     });

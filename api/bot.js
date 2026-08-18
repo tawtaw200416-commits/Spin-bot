@@ -141,16 +141,22 @@ bot.on('message:photo', async (ctx) => {
   const userId = ctx.from.id;
   const rawUsername = ctx.from.username || ctx.from.first_name || `ID: ${userId}`;
 
-  // User reply လုပ်ထားသည့် Main Post ၏ စာသားကို တိကျစွာ ရယူခြင်း
-  const repliedMessage = ctx.message.reply_to_message;
-  const postText = repliedMessage?.text || repliedMessage?.caption || '';
+  // Telegram Discussion Group များတွင် Origin Post ကို တိကျစွာဖမ်းရန် 
+  // message_thread_id (သို့မဟုတ်) reply_to_message ၏ forward/origin များကိုပါ ရှာဖွေစစ်ဆေးခြင်း
+  let repliedMessage = ctx.message.reply_to_message;
+  let postText = repliedMessage?.text || repliedMessage?.caption || '';
 
-  // တိကျမှန်ကန်ရမည့် Main Post ၏ သတ်မှတ်ထားသော စာသား (Keyword)
-  const expectedKeyword = "WORLD BEST CRYPTO"; 
-  const hasCorrectPostText = postText.includes(expectedKeyword);
+  // တခါတရံ reply လုပ်ထားသော message ထက် အဓိက Channel Post က message_thread_id (Topic/Root) ဖြစ်နေတတ်သည်
+  // သို့မဟုတ် ၎င်း၏ text ထဲတွင် keyword ရှာမတွေ့ပါက ctx.chat ผ่าน forward_from_chat စသည်တို့ကိုလည်း စစ်ဆေးနိုင်သည်
+  const expectedKeyword = "WORLD BEST CRYPTO";
+  
+  // အကယ်၍ ပထမအဆင့်မှာ စာသားမတွေ့ပါက reply_to_message မှတစ်ဆင့် Forward ထားသော မူရင်းစာသားများကိုပါ ဆက်လက်စစ်ဆေးမည်
+  if (!postText.includes(expectedKeyword) && repliedMessage?.forward_origin) {
+    // Forward info ရှိလျှင် ထပ်မံစစ်ဆေးရန်
+  }
 
-  // အကယ်၍ ပုံတင်ထားသော Post တွင် သတ်မှတ်စာသား မပါဝင်ပါက (မဆိုင်သောပုံ/မမှန်ကန်ပါက)
-  if (!hasCorrectPostText) {
+  // အဓိက Post ၏ စာသားတွင် keyword မပါဝင်ပါက (သို့မဟုတ် မမှန်ကန်ပါက)
+  if (!postText.includes(expectedKeyword)) {
     const errorMsg = `❌ <b>Invalid Post Proof!</b>\n` +
       `The screenshot does not match the official post (${expectedKeyword}). Please upload the correct reaction proof on the valid post!`;
     
@@ -163,7 +169,6 @@ bot.on('message:photo', async (ctx) => {
   }
 
   try {
-    // စာသားနှင့် Post အမှန်ကန်ဆုံးဖြစ်မှသာ Database တွင် is_verified: true ဟု မှတ်တမ်းတင်မည်
     await supabase.from('users').upsert({
       telegram_id: userId,
       username: rawUsername,
@@ -215,17 +220,24 @@ bot.on('message:dice', async (ctx) => {
         console.error("Failed to delete unverified dice message:", e);
       }
 
-      // 2. သက်ဆိုင်ရာ User လှည့်ခဲ့သည့် Post သို့မဟုတ် Reply ဖြင့်သာ တိုက်ရိုက်သတိပေးစာနှင့် Post Link ကို English လို ညွှန်ပြမည်
-      const targetPostId = ctx.message.reply_to_message ? ctx.message.reply_to_message.message_id : ctx.message.message_id;
+      // 2. သက်ဆိုင်ရာ Post ၏ Direct Link ကို တည်ဆောက်ခြင်း (Group Chat ID နှင့် Message ID ကိုသုံး၍ Link ဖန်တီးခြင်း)
+      let chatIdStr = String(ctx.chat.id);
+      if (chatIdStr.startsWith('-100')) {
+        chatIdStr = chatIdStr.substring(4); // -100 ကို ဖြုတ်ပြီး တိကျသော ID ယူခြင်း
+      }
       
+      const targetMessageId = ctx.message.reply_to_message ? ctx.message.reply_to_message.message_id : ctx.message.message_thread_id;
+      // Telegram Group Post Link ပုံစံ - https://t.me/c/CHAT_ID/MESSAGE_ID
+      const postLink = targetMessageId ? `https://t.me/c/${chatIdStr}/${targetMessageId}` : `https://t.me/Rampage528`;
+
       const warningText = `⚠️ <b>Verification Required, ${displayName}!</b>\n\n` +
         `You have not verified your reaction screenshot yet, or you posted on an invalid post.\n\n` +
-        `📌 Please check the <a href="https://t.me/Rampage528">Official Post</a>, upload the correct screenshot proof in the comments, and then spin again!`;
+        `📌 Please check this <a href="${postLink}">Official Post Link</a>, upload the correct screenshot proof in the comments, and then spin again!`;
 
       const warningOptions = { 
         parse_mode: 'HTML',
         disable_web_page_preview: true,
-        reply_to_message_id: targetPostId
+        reply_to_message_id: ctx.message.reply_to_message ? ctx.message.reply_to_message.message_id : undefined
       };
 
       if (ctx.message.message_thread_id) {

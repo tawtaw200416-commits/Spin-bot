@@ -145,10 +145,9 @@ bot.on('message:photo', async (ctx) => {
   const repliedMessage = ctx.message.reply_to_message;
   const postCaption = repliedMessage?.text || repliedMessage?.caption || '';
 
-  // Main Post တွင် ပါရှိရမည့် သက်ဆိုင်ရာ ခေါင်းစဉ်/စာသား (ဥပမာ - WORLD BEST CRYPTO)
-  // လိုအပ်ပါက မိမိတို့၏ Post စာသားအလိုက် ဤနေရာတွင် အစားထိုးနိုင်ပါသည်
+  // တိကျမှန်ကန်ရမည့် Main Post ၏ စာသား (ဥပမာ ပုံများထဲပါရှိသော "WORLD BEST CRYPTO")
   const expectedKeyword = "WORLD BEST CRYPTO"; 
-  const hasValidText = postCaption.includes(expectedKeyword) || postCaption.length > 0;
+  const hasValidText = postCaption.includes(expectedKeyword);
 
   if (!hasValidText) {
     const errorMsg = `❌ <b>Invalid Post Proof!</b>\n` +
@@ -163,7 +162,7 @@ bot.on('message:photo', async (ctx) => {
   }
 
   try {
-    // မှန်ကန်ပါက Database တွင် Verified = true ဟု မှတ်တမ်းတင်မည်
+    // မှန်ကန်ပါက Database တွင် is_verified: true ဟု သတ်မှတ်ပေးမည် (အဟောင်းများကို မထိခိုက်စေပါ)
     await supabase.from('users').upsert({
       telegram_id: userId,
       username: rawUsername,
@@ -208,7 +207,7 @@ bot.on('message:dice', async (ctx) => {
 
     // အကယ်၍ Verify မလုပ်ရသေးပါက (သို့မဟုတ်) ပုံမတင်ရသေးပါက
     if (!user || !user.is_verified) {
-      // 1. တင်ထားသော Dice (Spin) မက်ဆေ့ခ်ျကို ချက်ချင်းပြန်ဖျက်မည်
+      // 1. လှည့်ထားသော Spin (Dice) မက်ဆေ့ခ်ျကို ချက်ချင်းပြန်ဖျက်မည်
       try {
         await ctx.api.deleteMessage(ctx.chat.id, ctx.message.message_id);
       } catch (e) {

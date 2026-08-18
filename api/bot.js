@@ -38,7 +38,7 @@ bot.catch((err) => {
   console.error('Error in bot:', err);
 });
 
-// Helper Function to Delete Message Later
+// Helper Function to Delete Message Later (Guaranteed deletion within 5 seconds for all bot messages)
 const deleteMessageLater = (ctx, chatId, messageId, delay = 5000) => {
   const promise = (async () => {
     await sleep(delay);
@@ -76,7 +76,6 @@ const isCommentSection = (ctx) => {
 const getTargetPostId = (ctx) => {
   const replyTo = ctx.message?.reply_to_message;
   if (replyTo) {
-    // ပို့စ်တစ်ခု၏ original message_id (သို့) forward id ကို တိကျစွာ ရယူရန်
     return replyTo.forward_from_message_id || replyTo.message_id || null;
   }
   return ctx.message?.message_thread_id || null;
@@ -239,7 +238,6 @@ bot.on('message:photo', async (ctx) => {
 
     const currentBalance = existingUser && existingUser.balance !== null ? parseFloat(existingUser.balance) : 0;
 
-    // Supabase တွင် ဤ Post ID အတွက် verify ဖြစ်ကြောင်း အတိအကျ သိမ်းဆည်းမည်
     await supabase.from('users').upsert({
       telegram_id: userId,
       username: rawUsername,
@@ -284,9 +282,9 @@ bot.on('message:dice', async (ctx) => {
       .eq('telegram_id', userId)
       .maybeSingle();
 
-    // 🎯 တိကျသော စစ်ဆေးချက် - Database ထဲရှိ verified_post_id သည် လက်ရှိ post ID (သို့) active နှင့် ကိုက်ညီရမည်
+    // 🔍 တိကျစွာစစ်ဆေးခြင်း: Database ထဲရှိ verified_post_id သည် လက်ရှိ post ID နှင့် တူနေရမည်
     if (userRecord && userRecord.is_verified === true) {
-      if (userRecord.verified_post_id === currentSpinPostIdStr || userRecord.verified_post_id === 'active') {
+      if (userRecord.verified_post_id === currentSpinPostIdStr) {
         isVerifiedForThisPost = true;
       }
     }
@@ -294,7 +292,7 @@ bot.on('message:dice', async (ctx) => {
     console.error("Check verification error:", e);
   }
 
-  // အကယ်၍ ဤ post အတွက် verify မလုပ်ရသေးပါကမှသာ ဖျက်ပြီး ထပ်တောင်းမည်
+  // Post အသစ်ဖြစ်နေပြီး ဤ post အတွက် verify မလုပ်ရသေးမှသာ ဖျက်ပြီး ထပ်တောင်းမည်
   if (!isVerifiedForThisPost) {
     try {
       await ctx.api.deleteMessage(ctx.chat.id, ctx.message.message_id);
@@ -318,7 +316,7 @@ bot.on('message:dice', async (ctx) => {
     return;
   }
 
-  // Verify ပြီးသား user ဖြစ်ပါက Spin ကို ခွင့်ပြုပေးမည် (အကြိမ်ရေ အကန့်အသတ်မရှိ လှည့်နိုင်သည်)
+  // Verify ပြီးသား user ဖြစ်ပါက ဤ post တွင် အကန့်အသတ်မရှိ ဆက်လက် spin လှည့်ခွင့်ပေးမည်
   const diceValue = ctx.message.dice.value;
   let replyText = '';
   const winCombination = getSlotResult(diceValue);

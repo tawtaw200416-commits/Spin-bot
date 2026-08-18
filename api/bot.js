@@ -240,7 +240,7 @@ bot.on('message:photo', async (ctx) => {
 
     const currentBalance = existingUser && existingUser.balance !== null ? parseFloat(existingUser.balance) : 0;
 
-    // Database တွင် User အား ယခု Post အတွက် Verified ဖြစ်ကြောင်း မှတ်သားမည်
+    // Database တွင် ယခု Post အတွက် Verified ဖြစ်ကြောင်း မှတ်သားမည်
     await supabase.from('users').upsert({
       telegram_id: userId,
       username: rawUsername,
@@ -284,18 +284,16 @@ bot.on('message:dice', async (ctx) => {
       .eq('telegram_id', userId)
       .maybeSingle();
 
-    // User သည် verify လုပ်ထားပြီး၊ အခုလက်ရှိ Spin လှည့်နေသော Post ID သည် 
-    // Database ထဲက verified_post_id နှင့် တူညီမှသာ ေအာင်မြင်သည်ဟု သတ်မှတ်မည်
-    if (userRecord && userRecord.is_verified === true) {
-      if (!userRecord.verified_post_id || userRecord.verified_post_id === currentSpinPostId) {
-        isVerifiedForThisPost = true;
-      }
+    // အဓိက စစ်ဆေးချက် - User သည် verify လုပ်ထားပြီး၊ verified_post_id သည် ယခုလက်ရှိ Post ID နှင့် 
+    // အတိအကျတူညီနေမှသာလျှင် ဤ Post ထဲတွင် ဆက်လက် Spin လှည့်ခွင့်ပြုမည်
+    if (userRecord && userRecord.is_verified === true && userRecord.verified_post_id === currentSpinPostId) {
+      isVerifiedForThisPost = true;
     }
   } catch (e) {
     console.error("Check verification error:", e);
   }
 
-  // မ verify ရသေးလျှင် သို့မဟုတ် Post အသစ်ပြောင်းသွားလျှင် Spin ကိုဖျက်ပြီး ပုံပို့ရန် တောင်းဆိုမည်
+  // အကယ်၍ ထို Post တွင် မ verify ရသေးလျှင် သို့မဟုတ် Post အသစ်ပြောင်းသွားလျှင် Spin ကို ဖျက်မည်
   if (!isVerifiedForThisPost) {
     try {
       await ctx.api.deleteMessage(ctx.chat.id, ctx.message.message_id);
@@ -305,7 +303,7 @@ bot.on('message:dice', async (ctx) => {
 
     const postLink = getPostLink(ctx);
     const warningText = `⚠️ <b>Proof Verification Required!</b>\n\n` +
-      `Your spin was deleted because this is a new post or you haven't verified for this specific post yet! Please send a screenshot reply with reaction (❤️ / 👍) and caption <code>WORLD BEST CRYPTO</code> first!\n\n` +
+      `Your spin was deleted because you haven't verified for this specific post yet! Please send a screenshot reply with reaction (❤️ / 👍) and caption <code>WORLD BEST CRYPTO</code> first!\n\n` +
       `🔗 <b>Target Post:</b> <a href="${postLink}">Click Here To View Post</a>`;
 
     const warningMsg = await ctx.reply(warningText, { 
@@ -319,7 +317,7 @@ bot.on('message:dice', async (ctx) => {
     return;
   }
 
-  // သက်ဆိုင်ရာ Post ထဲတွင် Verify ပြီးသားဖြစ်ပါက Spin ကို မဖျက်ဘဲ ရလဒ်တွက်ချက်ပေးမည်
+  // Verify ပြီးသား Post ဖြစ်ပါက Spin ကို မဖျက်ဘဲ ရလဒ်တွက်ချက်ပေးမည်
   const diceValue = ctx.message.dice.value;
   let replyText = '';
   const winCombination = getSlotResult(diceValue);
@@ -368,6 +366,8 @@ bot.on('message:dice', async (ctx) => {
     reply_to_message_id: ctx.message.reply_to_message ? ctx.message.reply_to_message.message_id : undefined,
     message_thread_id: ctx.message.message_thread_id
   });
+  
+  // Balance message ကို 5 စက္ကန့်ပြည့်တာနဲ့ အလိုအလျောက် ဖျက်ပေးမည်
   deleteMessageLater(ctx, ctx.chat.id, sentMsg.message_id, 5000);
 });
 

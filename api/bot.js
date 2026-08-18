@@ -9,6 +9,9 @@ const BOT_TOKEN = process.env.BOT_TOKEN || '8566391789:AAHxMWzB5EERqVAHI7Uf7rQod
 const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 const bot = new Bot(BOT_TOKEN);
 
+// Cooldown Map (User ၏ နောက်ဆုံးလှည့်ခဲ့သည့် အချိန်ကို မှတ်ရန်)
+const spinCooldowns = new Map();
+
 // Sleep Helper Function
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -38,7 +41,7 @@ bot.catch((err) => {
   console.error('Error in bot:', err);
 });
 
-// Helper Function to Delete Message Later (အမြန်ပြန်ဖြေနိုင်စေရန် 2 စက္ကန့်သို့ သတ်မှတ်ထားသည်)
+// Helper Function to Delete Message Later
 const deleteMessageLater = (ctx, chatId, messageId, delay = 2000) => {
   const promise = (async () => {
     await sleep(delay);
@@ -72,7 +75,7 @@ const isCommentSection = (ctx) => {
   return isReply || isTopic || isAutoForward;
 };
 
-// Target Post ID ထုတ်ယူမည့် Helper (ပိုမိုတိကျစေရန်)
+// Target Post ID ထုတ်ယူမည့် Helper
 const getTargetPostId = (ctx) => {
   const replyTo = ctx.message?.reply_to_message;
   if (replyTo) {
@@ -135,7 +138,7 @@ bot.command('spin', async (ctx) => {
   deleteMessageLater(ctx, ctx.chat.id, sent.message_id, 2000);
 });
 
-// 3. Admin (1793453606) သီးသန့် Broadcast ပို့မည့် Command
+// 3. Admin Broadcast Command
 bot.command('broadcast', async (ctx) => {
   const userId = ctx.from?.id;
   
@@ -176,7 +179,7 @@ bot.command('broadcast', async (ctx) => {
           disable_web_page_preview: false
         });
         successCount++;
-        await sleep(20); // ပိုမိုမြန်ဆန်စွာ ပို့ဆောင်နိုင်ရန် အချိန်ကို လျှော့ချထားသည်
+        await sleep(20); 
       } catch (err) {
         failCount++; 
       }
@@ -264,7 +267,7 @@ bot.on('message:photo', async (ctx) => {
   deleteMessageLater(ctx, ctx.chat.id, successMsg.message_id, 2000);
 });
 
-// 5. Slot Machine Dice Handling (Verification + Multi-Post Check)
+// 5. Slot Machine Dice Handling (Verification + 10s Cooldown Check)
 bot.on('message:dice', async (ctx) => {
   if (!ctx.message.dice || ctx.message.dice.emoji !== '🎰') return;
   if (!isCommentSection(ctx)) return;
@@ -272,6 +275,33 @@ bot.on('message:dice', async (ctx) => {
   const userId = ctx.from.id;
   const rawUsername = ctx.from.username || ctx.from.first_name || `ID: ${userId}`;
   const displayName = ctx.from.username ? `@${ctx.from.username}` : rawUsername;
+
+  // 10 Seconds Cooldown စစ်ဆေးခြင်း
+  const now = Date.now();
+  const lastSpinTime = spinCooldowns.get(userId) || 0;
+  const cooldownTime = 10000; // ၁၀ စက္ಕန့် (မီလီစက္ကန့်ဖြင့်)
+
+  if (now - lastSpinTime < cooldownTime) {
+    const remainingSeconds = Math.ceil((cooldownTime - (now - lastSpinTime)) / 1000);
+    try {
+      await ctx.api.deleteMessage(ctx.chat.id, ctx.message.message_id);
+    } catch (e) {}
+
+    const cooldownMsg = await ctx.reply(
+      `⏳ <b>Slow down ${displayName}!</b>\n` +
+      `Please wait <b>${remainingSeconds} seconds</b> before spinning again.`,
+      { 
+        parse_mode: 'HTML',
+        reply_to_message_id: ctx.message.reply_to_message ? ctx.message.reply_to_message.message_id : undefined,
+        message_thread_id: ctx.message.message_thread_id
+      }
+    );
+    deleteMessageLater(ctx, ctx.chat.id, cooldownMsg.message_id, 2000);
+    return;
+  }
+
+  // ယခုလှည့်သည့် အချိန်ကို မှတ်တမ်းတင်မည်
+  spinCooldowns.set(userId, now);
 
   const currentSpinPostId = getTargetPostId(ctx);
   let isVerifiedForThisPost = false;

@@ -9,23 +9,30 @@ const BOT_TOKEN = process.env.BOT_TOKEN || '8566391789:AAHxMWzB5EERqVAHI7Uf7rQod
 const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 const bot = new Bot(BOT_TOKEN);
 
+// User တစ်ယောက်ချင်းစီ မည်သည့် Post Thread တွင် Verification အောင်မြင်ထားသလဲဆိုသည်ကို မှတ်ထားမည့် Memory Map
+// Map Key: `${userId}_${threadId}`
+const verifiedUsers = new Map();
+
 // Sleep Helper Function
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-// Telegram Slot Machine ၏ 777 အပါအပါဝင် တရားဝင် ရလဒ်များအားလုံး တိကျစွာ တွက်ချက်သည့် Function
+// Telegram Slot Machine ၏ 777 အပါအဝင် တရားဝင် ရလဒ်များအားလုံး တိကျစွာ တွက်ချက်သည့် Function
 const getSlotResult = (value) => {
+  // Telegram ၏ တရားဝင်တန်ဖိုး (1 မှ 64 ထိ)
   let v = value - 1;
   let r1 = v % 4;             
   let r2 = Math.floor(v / 4) % 4; 
   let r3 = Math.floor(v / 16) % 4;
 
+  // 777 / BAR / အသီးများအတွက် တရားဝင် သင်္ကေတနှင့် ဆုကြေးများ
   const symbols = {
     0: { name: '🏷️ BAR BAR BAR', reward: 0.00080 },    // BAR = 0.00080 GRAM
     1: { name: '🍇 🍇 🍇',       reward: 0.00050 },   // Grape = 0.00050 GRAM
     2: { name: '🍋 🍋 🍋',       reward: 0.00030 },   // Lemon = 0.00030 GRAM
-    3: { name: '7️⃣ 7️⃣ 7️⃣ (Jackpot)', reward: 0.0010 } // 777 = 0.0010 GRAM
+    3: { name: '7️⃣ 7️⃣ 7️⃣ (Jackpot)', reward: 0.0010 } // 777 = 0.0010 GRAM (သို့မဟုတ် လိုချင်သောတန်ဖိုး)
   };
 
+  // ၃ ခုတန်းမှသာ ဆုပေးမည်
   if (r1 === r2 && r2 === r3) {
     return symbols[r3] || null;
   }
@@ -38,7 +45,7 @@ bot.catch((err) => {
   console.error('Error in bot:', err);
 });
 
-// Delay ဖြင့် Background မှာ Message ဖျက်ပေးမည့် Helper Function
+// Delay ဖြင့် Background မှာ Message ဖျက်ပေးမည့် Helper Function (Default: 5000ms / 5 Seconds)
 const deleteMessageLater = (ctx, chatId, messageId, delay = 5000) => {
   const promise = (async () => {
     await sleep(delay);
@@ -86,6 +93,7 @@ bot.command('broadcast', async (ctx) => {
     return ctx.reply('❌ This command is restricted.');
   }
 
+  // Admin ရိုက်လိုက်သော စာသားကို ယူခြင်း (ဥပမာ - /broadcast စာသား)
   const customMessage = ctx.match;
 
   if (!customMessage) {
@@ -133,29 +141,27 @@ bot.command('broadcast', async (ctx) => {
 });
 
 // ==========================================
-// 4. Comment ထဲတွင် ပို့လာသော Photo/Receipt စစ်ဆေးခြင်း
+// 4. Post Comment Photo Verification Handling
 // ==========================================
 bot.on('message:photo', async (ctx) => {
   const isComment = ctx.message.reply_to_message || ctx.message.is_topic_message;
   if (!isComment) return;
 
-  const caption = ctx.message.caption || '';
-  // ပုံနှင့်အတူ ပါလာသော Text သို့မဟုတ် Telegram OCR Image File Path Analysis (ဥပမာ- TON Address ပါမပါ စစ်ဆေးခြင်း)
-  const isTonReceipt = caption.includes('UQ') || caption.includes('EQ') || caption.toLowerCase().includes('ton');
+  const userId = ctx.from.id;
+  const threadId = ctx.message.message_thread_id || ctx.message.reply_to_message?.message_id || 'default';
+  const verifyKey = `${userId}_${threadId}`;
 
-  let replyText = '';
-  if (isTonReceipt || caption.length > 0) {
-    replyText = `✅ <b>Receipt Verified Successfully!</b>\n\n` +
-      `You can now spin the slot machine in this post section. Good luck! 🎰`;
-  } else {
-    replyText = `❌ <b>Invalid Receipt/Image!</b>\n\n` +
-      `Please send a valid proof or receipt image related to the post.`;
-  }
+  // User ၏ ပုံပို့ဆောင်မှုကို အတည်ပြုပြီး Verification key ကို သိမ်းဆည်းခြင်း
+  verifiedUsers.set(verifyKey, true);
+
+  const replyText = `✅ <b>Post Proof Verified!</b>\n` +
+    `Your reaction screenshot for this post is confirmed. You can now roll 🎰 to spin!`;
 
   const replyOptions = { 
     parse_mode: 'HTML',
     reply_to_message_id: ctx.message.message_id
   };
+  
   if (ctx.message.message_thread_id) {
     replyOptions.message_thread_id = ctx.message.message_thread_id;
   }
@@ -165,42 +171,47 @@ bot.on('message:photo', async (ctx) => {
 });
 
 // ==========================================
-// 5. Slot Machine Dice Handling (စစ်ဆေးခြင်းနှင့် Spin တွက်ချက်ခြင်း)
+// 5. Slot Machine Dice Handling
 // ==========================================
 bot.on('message:dice', async (ctx) => {
   if (!ctx.message.dice || ctx.message.dice.emoji !== '🎰') return;
 
   const isComment = ctx.message.reply_to_message || ctx.message.is_topic_message;
-  
-  // ဘယ် Post ရဲ့ Comment မှာမဆို Direct Spin လှည့်ပါက Link ပါသည့် English သတိပေးစာ ပို့ပေးရန်
-  if (isComment) {
-    const chatUsername = ctx.chat.username;
-    const messageId = ctx.message.reply_to_message?.message_id || ctx.message.message_thread_id;
-    const postLink = chatUsername && messageId ? `https://t.me/${chatUsername}/${messageId}` : `https://t.me/Rampage528`;
+  if (!isComment) return;
 
-    const warningText = `⚠️ <b>Direct spin is not allowed!</b>\n\n` +
-      `Please verify your receipt photo first before playing.\n` +
+  const userId = ctx.from.id;
+  const threadId = ctx.message.message_thread_id || ctx.message.reply_to_message?.message_id || 'default';
+  const verifyKey = `${userId}_${threadId}`;
+
+  // မည်သည့် Post Thread မဆို Comment တွင် Screenshot မပို့ဘဲ တိုက်ရိုက် Spin လှည့်ပါက စစ်ဆေးခြင်း
+  if (!verifiedUsers.has(verifyKey)) {
+    const chatUsername = ctx.chat.username;
+    const postLink = chatUsername && threadId && threadId !== 'default'
+      ? `https://t.me/${chatUsername}/${threadId}`
+      : `https://t.me/Rampage528`;
+
+    const warningText = `⚠️ <b>Proof Verification Required!</b>\n\n` +
+      `Please react (❤️/👍) to the main post and upload the screenshot proof first.\n\n` +
       `🔗 <b>Target Post:</b> <a href="${postLink}">Click Here To View Post</a>`;
 
-    const replyOptions = {
+    const warningOptions = {
       parse_mode: 'HTML',
       reply_to_message_id: ctx.message.message_id,
       disable_web_page_preview: true
     };
+
     if (ctx.message.message_thread_id) {
-      replyOptions.message_thread_id = ctx.message.message_thread_id;
+      warningOptions.message_thread_id = ctx.message.message_thread_id;
     }
 
-    const sentWarning = await ctx.reply(warningText, replyOptions);
+    const sentWarning = await ctx.reply(warningText, warningOptions);
     deleteMessageLater(ctx, ctx.chat.id, sentWarning.message_id, 5000);
     deleteMessageLater(ctx, ctx.chat.id, ctx.message.message_id, 5000);
     return;
   }
 
-  // ပုံမှန် Spin တွက်ချက်ခြင်း Process
+  // Verification မှန်ကန်ပါက Spin ကို တွက်ချက်ခြင်း
   const diceValue = ctx.message.dice.value;
-  const userId = ctx.from.id;
-  
   const rawUsername = ctx.from.username || ctx.from.first_name || `ID: ${userId}`;
   const displayName = ctx.from.username ? `@${ctx.from.username}` : rawUsername;
 

@@ -65,9 +65,6 @@ const isCommentSection = (ctx) => {
   const msg = ctx.message;
   if (!msg) return false;
   
-  // Telegram links channel posts to a discussion supergroup. 
-  // Comments inside discussion groups always reply to a message or are part of a topic thread, 
-  // OR the message originates from a channel post linkage (is_automatic_forward or reply_to_message existing).
   const isReply = !!msg.reply_to_message;
   const isTopic = !!msg.is_topic_message;
   const isAutoForward = !!msg.is_automatic_forward;
@@ -99,7 +96,7 @@ const getPostLink = (ctx) => {
   return `https://t.me/Rampage528`;
 };
 
-// 1. /start Command (သီးသန့် Comment section ထဲတွင်သာ အလုပ်လုပ်မည်၊ Main Group စာများကို လုံးဝလျစ်လျူရှုမည်)
+// 1. /start Command
 bot.command('start', async (ctx) => {
   if (!isCommentSection(ctx)) return;
 
@@ -120,7 +117,7 @@ bot.command('start', async (ctx) => {
   deleteMessageLater(ctx, ctx.chat.id, sent.message_id, 5000);
 });
 
-// 2. /spin Command (သီးသန့် Comment section ထဲတွင်သာ အလုပ်လုပ်မည်၊ Main Group စာများကို လုံးဝလျစ်လျူရှုမည်)
+// 2. /spin Command
 bot.command('spin', async (ctx) => {
   if (!isCommentSection(ctx)) return;
 
@@ -200,9 +197,8 @@ bot.command('broadcast', async (ctx) => {
   }
 });
 
-// 4. Photo Verification Handling (Main Group Chat ထဲမှ ပုံမှန်ဓာတ်ပုံနှင့် ငွေပေးချေမှုပြေစာများကို လုံးဝမထိဘဲ လျစ်လျူရှုမည်၊ Comment Section ထဲက ဓာတ်ပုံများကိုသာ စစ်ဆေးမည်)
+// 4. Photo Verification Handling (Stores exact targetPostId for specific post verification)
 bot.on('message:photo', async (ctx) => {
-  // Main Group chat ၏ ပုံမှန် General message/Receipt ပုံမှန်ဆိုပါက လုံးဝမတုံ့ပြန်ဘဲ ကျော်သွားမည်
   if (!isCommentSection(ctx)) return;
 
   const userId = ctx.from.id;
@@ -215,7 +211,6 @@ bot.on('message:photo', async (ctx) => {
   const photoCaption = ctx.message.caption || '';
   const isValidCaption = photoCaption.includes('WORLD BEST CRYPTO') || photoCaption.includes('game link');
 
-  // Comment section ထဲတွင် ပို့လာသော ပုံ၏ Caption မှားနေပါက ပုံကိုပါ တန်းဖျတ်ပြီး သတိပေးမည်
   if (!isValidCaption) {
     try {
       await ctx.api.deleteMessage(ctx.chat.id, ctx.message.message_id);
@@ -234,7 +229,6 @@ bot.on('message:photo', async (ctx) => {
     return;
   }
 
-  // Caption မှန်ကန်ပါက Database တွင် အဆိုပါ user ကို verify ဖြစ်ကြောင်း အပြည့်အစုံ မှတ်သားမည်
   try {
     let { data: existingUser } = await supabase
       .from('users')
@@ -244,6 +238,7 @@ bot.on('message:photo', async (ctx) => {
 
     const currentBalance = existingUser && existingUser.balance !== null ? parseFloat(existingUser.balance) : 0;
 
+    // Save verification tied strictly to this post ID
     await supabase.from('users').upsert({
       telegram_id: userId,
       username: rawUsername,
@@ -257,7 +252,7 @@ bot.on('message:photo', async (ctx) => {
 
   const successMsg = await ctx.reply(
     `✅ <b>Verification Successful, ${displayName}!</b>\n` +
-    `Your screenshot is verified for this comment. You can now spin freely right here!`,
+    `Your screenshot is verified for this post. You can now spin freely right here!`,
     { 
       parse_mode: 'HTML',
       reply_to_message_id: ctx.message.reply_to_message ? ctx.message.reply_to_message.message_id : undefined,
@@ -268,11 +263,9 @@ bot.on('message:photo', async (ctx) => {
   deleteMessageLater(ctx, ctx.chat.id, successMsg.message_id, 5000);
 });
 
-// 5. Slot Machine Dice Handling (Main Group Chat ၏ Dice များကို လုံးဝမထိဘဲ၊ Comment section ထဲက Dice များကိုသာ စစ်ဆေးမည်)
+// 5. Slot Machine Dice Handling (Strictly matches targetPostId to allow or deny spin)
 bot.on('message:dice', async (ctx) => {
   if (!ctx.message.dice || ctx.message.dice.emoji !== '🎰') return;
-
-  // Main Group chat ထဲတွင် လှည့်သော Dice မှန်သမျှကို လုံးဝ လျစ်လျူရှုမည် (မဖျက်ပါ၊ မတုံ့ပြန်ပါ)
   if (!isCommentSection(ctx)) return;
 
   const userId = ctx.from.id;
@@ -290,9 +283,9 @@ bot.on('message:dice', async (ctx) => {
       .eq('telegram_id', userId)
       .maybeSingle();
 
-    // Database တွင် အဆိုပါ user ၏ verify မှတ်တမ်းကို စစ်ဆေးခြင်း
+    // 🎯 ပြင်ဆင်ချက်- User verify လုပ်ထားသော post ID နှင့် လက်ရှိ spin လှည့်နေသော post ID တိကျစွာ ကိုက်ညီမှသာ ခွင့်ပြုမည်
     if (userRecord && userRecord.is_verified === true) {
-      if (!userRecord.verified_post_id || userRecord.verified_post_id === currentSpinPostIdStr) {
+      if (userRecord.verified_post_id && userRecord.verified_post_id === currentSpinPostIdStr) {
         isVerifiedForThisPost = true;
       }
     }
@@ -300,7 +293,7 @@ bot.on('message:dice', async (ctx) => {
     console.error("Check verification error:", e);
   }
 
-  // Comment section ထဲတွင် Verify မလုပ်ရသေးဘဲ Spin လှည့်ပါက Spin ကို တန်းဖျတ်မည်
+  // Post အသစ်ဖြစ်နေပါက သို့မဟုတ် verify မလုပ်ရသေးပါက spin ကိုဖျက်ပြီး ပြန်တောင်းမည်
   if (!isVerifiedForThisPost) {
     try {
       await ctx.api.deleteMessage(ctx.chat.id, ctx.message.message_id);
@@ -310,7 +303,7 @@ bot.on('message:dice', async (ctx) => {
 
     const postLink = getPostLink(ctx);
     const warningText = `⚠️ <b>Proof Verification Required!</b>\n\n` +
-      `Your spin was deleted because you haven't verified for this comment yet! Please send a screenshot reply with reaction (❤️ / 👍) and caption <code>WORLD BEST CRYPTO</code> first!\n\n` +
+      `Your spin was deleted because you haven't verified for this specific post yet! Please send a screenshot reply with reaction (❤️ / 👍) and caption <code>WORLD BEST CRYPTO</code> first!\n\n` +
       `🔗 <b>Target Post:</b> <a href="${postLink}">Click Here To View Post</a>`;
 
     const warningMsg = await ctx.reply(warningText, { 
@@ -324,7 +317,7 @@ bot.on('message:dice', async (ctx) => {
     return;
   }
 
-  // Verify ဖြစ်ပြီးသား user ဖြစ်ပါက Spin ကိုခွင့်ပြုပြီး ရလဒ်နှင့် ဘိုလန်ကို တွက်ချက်ပေးမည်
+  // Verify ဖြစ်ပြီးသား post ဖြစ်ပါက အကြိမ်ရေ ကန့်သတ်ချက်မရှိ spin လှည့်ခွင့်ပေးမည်
   const diceValue = ctx.message.dice.value;
   let replyText = '';
   const winCombination = getSlotResult(diceValue);

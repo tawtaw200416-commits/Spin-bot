@@ -241,7 +241,7 @@ bot.on('message:photo', async (ctx) => {
 
     const currentBalance = existingUser && existingUser.balance !== null ? parseFloat(existingUser.balance) : 0;
 
-    // Database တွင် သက်ဆိုင်ရာ post ID နှင့်တကွ မှတ်သားသိမ်းဆည်းမည်
+    // Database တွင် is_verified ကို true အဖြစ် အမြဲတမ်း မှတ်သားမည်
     await supabase.from('users').upsert({
       telegram_id: userId,
       username: rawUsername,
@@ -253,7 +253,7 @@ bot.on('message:photo', async (ctx) => {
     console.error("Supabase verification save error:", e);
   }
 
-  // Verify အောင်မြင်ကြောင်းစာသား (Post Link လုံးဝမပါဝင်တော့ပါ)
+  // Verify အောင်မြင်ကြောင်းစာသား
   const successMsg = await ctx.reply(
     `✅ <b>Complete Verified User: ${displayName}!</b>\n` +
     `Your screenshot is successfully verified. You can now spin freely in this post thread without restriction! 🎰`,
@@ -284,11 +284,11 @@ bot.on('message:dice', async (ctx) => {
   try {
     const { data: userRecord } = await supabase
       .from('users')
-      .select('is_verified, verified_post_id, balance')
+      .select('is_verified, balance')
       .eq('telegram_id', userId)
       .maybeSingle();
 
-    // User သည် verify ပြီးသားဖြစ်ပါက Post ID တိုက်စစ်စရာမလိုဘဲ အမြဲတမ်း spin လှည့်ခွင့်ပေးမည် (ဖျက်မည်မဟုတ်ပါ)
+    // အရေးကြီးပြောင်းလဲချက်: User သည် Database တွင် is_verified: true ဖြစ်နေပြီဆိုပါက Post ID တိုက်စစ်စရာမလိုဘဲ အမြဲတမ်း Spin လှည့်ခွင့်ပေးမည်
     if (userRecord && userRecord.is_verified === true) {
       isVerifiedForThisPost = true;
     }
@@ -296,7 +296,7 @@ bot.on('message:dice', async (ctx) => {
     console.error("Check verification error:", e);
   }
 
-  // လုံးဝမ verify ရသေးမှသာ spin ကိုဖျက်ပြီး ပုံပို့ရန် တောင်းဆိုမည်
+  // လုံးဝမ verify ရသေးသော user များမှသာ spin ကိုဖျက်ပြီး ပုံပို့ရန် တောင်းဆိုမည်
   if (!isVerifiedForThisPost) {
     try {
       await ctx.api.deleteMessage(ctx.chat.id, ctx.message.message_id);
@@ -320,7 +320,7 @@ bot.on('message:dice', async (ctx) => {
     return;
   }
 
-  // Verify ပြီးသားဖြစ်ပါက spin ကို မဖျက်ဘဲ ဆက်လက်ကစားခွင့်ပေးမည်
+  // Verify ပြီးသား user ဖြစ်ပါက Spin ကို မဖျက်ဘဲ ဆက်လက်ကစားခွင့်ပေးမည်
   const diceValue = ctx.message.dice.value;
   let replyText = '';
   const winCombination = getSlotResult(diceValue);

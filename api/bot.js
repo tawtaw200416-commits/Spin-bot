@@ -160,14 +160,14 @@ bot.on('message:photo', async (ctx) => {
   const rawUsername = ctx.from.username || ctx.from.first_name || `ID: ${userId}`;
   const displayName = ctx.from.username ? `@${ctx.from.username}` : rawUsername;
 
-  // Check photo caption
+  // Check photo caption strictly for the target post text
   const photoCaption = ctx.message.caption || '';
   const isValidCaption = photoCaption.includes('WORLD BEST CRYPTO') || photoCaption.includes('game link');
 
   if (!isValidCaption) {
     const errorMsg = await ctx.reply(
       `❌ <b>Invalid Verification!</b>\n` +
-      `Please send your screenshot with the exact caption <code>WORLD BEST CRYPTO</code> to verify.`,
+      `Please send your screenshot with the exact caption <code>WORLD BEST CRYPTO</code> to verify your post reaction.`,
       { parse_mode: 'HTML', reply_to_message_id: ctx.message.message_id }
     );
     deleteMessageLater(ctx, ctx.chat.id, ctx.message.message_id, 5000);
@@ -247,7 +247,7 @@ bot.on('message:dice', async (ctx) => {
     return;
   }
 
-  // If verified, process spin results (unlimited spins allowed since is_verified is NOT reset)
+  // If verified, process spin results (unlimited spins allowed since is_verified is kept true)
   const diceValue = ctx.message.dice.value;
   let replyText = '';
   const winCombination = getSlotResult(diceValue);
@@ -271,7 +271,7 @@ bot.on('message:dice', async (ctx) => {
       telegram_id: userId,
       username: rawUsername,
       balance: newBalance,
-      is_verified: true // Keeps status verified for unlimited spins
+      is_verified: true // Keeps status verified for unlimited spins on this post
     }, { onConflict: 'telegram_id' });
 
     if (winCombination) {

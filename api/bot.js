@@ -38,7 +38,7 @@ bot.catch((err) => {
   console.error('Error in bot:', err);
 });
 
-// Delay ဖြင့် Background မှာ Message ဖျက်ပေးမည့် Helper Function (၅ စက္ကန့်ကြာပြီးမှ ဖျက်ရန်)
+// Delay ဖြင့် Background မှာ Message ဖျက်ပေးမည့် Helper Function (၅ စက္ကန့်တိတိဖြင့် သတ်မှတ်ထားသည်)
 const deleteMessageLater = (ctx, chatId, messageId, delay = 5000) => {
   const promise = (async () => {
     await sleep(delay);
@@ -163,9 +163,9 @@ bot.on('message:photo', async (ctx) => {
                                   lowerCaption.includes('ကျပ်') ||
                                   lowerCaption.includes('ငွေလွှဲ');
 
-  // အကယ်၍ သက်ဆိုင်ရာ Post စာသား တစ်ကြောင်းနှစ်ကြောင်း အပြည့်အစုံ မပါဝင်ပါက (သို့မဟုတ်) ငွေလွှဲစလစ်/မှားယွင်းသောပုံ ဖြစ်နေပါက
+  // အကယ်၍ သက်ဆိုင်ရာ Post စာသား အပြည့်အစုံ မပါဝင်ပါက (သို့မဟုတ်) မှားယွင်းသောပုံ/ငွေလွှဲစလစ်ဖြစ်နေပါက
   if (!hasCorrectPostText || isReceiptOrInvalidImage) {
-    // 1. User တင်လိုက်သော ပုံ (Photo Message) ကို ချက်ချင်းဖျက်မည်
+    // 1. User ပို့လိုက်သော မှားယွင်းသည့်ပုံကို ချက်ချင်းဖျက်မည်
     try {
       await ctx.api.deleteMessage(ctx.chat.id, ctx.message.message_id);
     } catch (e) {
@@ -175,7 +175,7 @@ bot.on('message:photo', async (ctx) => {
     const errorMsg = `❌ <b>Invalid Post Proof!</b>\n` +
       `The screenshot does not match the official post (${expectedKeyword}). Please upload a valid screenshot showing your reaction (❤️, 👍, or rec) on the correct post!`;
     
-    // 2. သတိပေးစာကို ပို့ပြီး ၅ စက္ကန့် (5s) ကြာမှ အလိုအလျောက် ပြန်ဖျက်မည်
+    // 2. Bot ၏ သတိပေးစာကို ပို့ပြီး ၅ စက္ကန့် (5s) ကြာမှ ပြန်ဖျက်မည်
     const sentErr = await ctx.reply(errorMsg, {
       parse_mode: 'HTML'
     });
@@ -183,7 +183,7 @@ bot.on('message:photo', async (ctx) => {
     return;
   }
 
-  // စာသားများ အားလုံး မှန်ကန်ပါက Verified လုပ်ပေးမည်
+  // စာသားများ မှန်ကန်ပါက Verified လုပ်ပေးမည်
   try {
     await supabase.from('users').upsert({
       telegram_id: userId,
@@ -227,7 +227,7 @@ bot.on('message:dice', async (ctx) => {
       .eq('telegram_id', userId)
       .maybeSingle();
 
-    // Verified မဖြစ်သေးပါက (သို့မဟုတ်) Database တွင် is_verified အမှန် မဖြစ်သေးပါက
+    // Verified မဖြစ်သေးပါက
     if (!user || !user.is_verified) {
       // 1. လှည့်ထားသော Spin (Dice) မက်ဆေ့ခ်ျကို ချက်ချင်းပြန်ဖျက်မည်
       try {
@@ -236,7 +236,6 @@ bot.on('message:dice', async (ctx) => {
         console.error("Failed to delete unverified dice message:", e);
       }
 
-      // 2. သက်ဆိုင်ရာ Post ၏ Direct Link ကို တည်ဆောက်ခြင်း
       let chatIdStr = String(ctx.chat.id);
       if (chatIdStr.startsWith('-100')) {
         chatIdStr = chatIdStr.substring(4); 
@@ -264,7 +263,7 @@ bot.on('message:dice', async (ctx) => {
       return; 
     }
 
-    // --- Verified အမှန်တကယ်ဖြစ်မှသာ Spin ရလဒ်များကို တွက်ချက်ပေးမည် ---
+    // --- Verified ဖြစ်မှသာ Spin ရလဒ် တွက်ချက်မည် ---
     const diceValue = ctx.message.dice.value;
     let replyText = '';
     const winCombination = getSlotResult(diceValue);

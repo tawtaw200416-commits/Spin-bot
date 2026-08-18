@@ -141,18 +141,18 @@ bot.on('message:photo', async (ctx) => {
   const userId = ctx.from.id;
   const rawUsername = ctx.from.username || ctx.from.first_name || `ID: ${userId}`;
 
-  // User reply လုပ်ထားသည့် Main Post ၏ စာသား (သို့) caption ကို တိကျစွာ ရယူခြင်း
+  // User reply လုပ်ထားသည့် Main Post ၏ စာသားကို တိကျစွာ ရယူခြင်း
   const repliedMessage = ctx.message.reply_to_message;
   const postText = repliedMessage?.text || repliedMessage?.caption || '';
 
-  // တိကျမှန်ကန်ရမည့် Main Post ၏ စာသား (ဥပမာ - WORLD BEST CRYPTO သို့မဟုတ် သက်ဆိုင်ရာ keyword)
+  // တိကျမှန်ကန်ရမည့် Main Post ၏ သတ်မှတ်ထားသော စာသား (Keyword)
   const expectedKeyword = "WORLD BEST CRYPTO"; 
   const hasCorrectPostText = postText.includes(expectedKeyword);
 
-  // အကယ်၍ ပုံတင်ထားသော comment က သက်ဆိုင်ရာ Main Post မဟုတ်လျှင် (သို့) စာသားမမှန်လျှင်
+  // အကယ်၍ ပုံတင်ထားသော Post တွင် သတ်မှတ်စာသား မပါဝင်ပါက (မဆိုင်သောပုံ/မမှန်ကန်ပါက)
   if (!hasCorrectPostText) {
     const errorMsg = `❌ <b>Invalid Post Proof!</b>\n` +
-      `တင်ပြထားသော ပုံသည် မှန်ကန်သော Main Post (${expectedKeyword}) နှင့် မကိုက်ညီပါ။ ကျေးဇူးပြု၍ သက်ဆိုင်ရာတရားဝင် Post တွင်သာ ပုံတင်ပေးပါ။`;
+      `The screenshot does not match the official post (${expectedKeyword}). Please upload the correct reaction proof on the valid post!`;
     
     const sentErr = await ctx.reply(errorMsg, {
       parse_mode: 'HTML',
@@ -163,7 +163,7 @@ bot.on('message:photo', async (ctx) => {
   }
 
   try {
-    // စာသားနှင့် Post မှန်ကန်ပါက Database တွင် is_verified: true ဟု မှတ်တမ်းတင်မည်
+    // စာသားနှင့် Post အမှန်ကန်ဆုံးဖြစ်မှသာ Database တွင် is_verified: true ဟု မှတ်တမ်းတင်မည်
     await supabase.from('users').upsert({
       telegram_id: userId,
       username: rawUsername,
@@ -182,7 +182,7 @@ bot.on('message:photo', async (ctx) => {
 
   } catch (error) {
     console.error("Verification Error:", error);
-    await ctx.reply('❌ Verification လုပ်ဆောင်ရာတွင် အမှားအယွင်းရှိပါသည်၊ ထပ်ကြိုးစားပါ။');
+    await ctx.reply('❌ Verification error occurred, please try again.');
   }
 });
 
@@ -215,12 +215,12 @@ bot.on('message:dice', async (ctx) => {
         console.error("Failed to delete unverified dice message:", e);
       }
 
-      // 2. သက်ဆိုင်ရာ User လှည့်ခဲ့သည့် Post သို့မဟုတ် Reply ဖြင့်သာ တိုက်ရိုက်သတိပေးစာနှင့် Post Link ကို ညွှန်ပြပေးမည်
+      // 2. သက်ဆိုင်ရာ User လှည့်ခဲ့သည့် Post သို့မဟုတ် Reply ဖြင့်သာ တိုက်ရိုက်သတိပေးစာနှင့် Post Link ကို English လို ညွှန်ပြမည်
       const targetPostId = ctx.message.reply_to_message ? ctx.message.reply_to_message.message_id : ctx.message.message_id;
       
       const warningText = `⚠️ <b>Verification Required, ${displayName}!</b>\n\n` +
-        `သင်သည် ပုံတင်၍ Verification မလုပ်ရသေးပါ သို့မဟုတ် မမှန်ကန်သော Post တွင် တင်ထားပါသည်။\n\n` +
-        `📌 ကျေးဇူးပြု၍ သက်ဆိုင်ရာ <a href="https://t.me/Rampage528">အဓိက Post</a> တွင် ပုံစံတကျ Screenshot တင်ပြီးမှသာ Spin လှည့်ပါ။`;
+        `You have not verified your reaction screenshot yet, or you posted on an invalid post.\n\n` +
+        `📌 Please check the <a href="https://t.me/Rampage528">Official Post</a>, upload the correct screenshot proof in the comments, and then spin again!`;
 
       const warningOptions = { 
         parse_mode: 'HTML',

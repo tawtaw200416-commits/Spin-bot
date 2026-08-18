@@ -121,7 +121,7 @@ bot.command('broadcast', async (ctx) => {
     await ctx.api.editMessageText(
       ctx.chat.id, 
       statusMsg.message_id, 
-      `✅ <b>Broadcast ပြီးစီးပါပြီ!</b>\n\n📤 ပို့ဆောင်နိုင်သူ - ${successCount} ဦး\n❌ မပို့နိုင်သူ - ${failCount} ဦး`, 
+      `✅ <b>Broadcast ပြီးစီးပါပြီ!</b>\n\n📤 ပို့ဆောင်နိုင်သူ - ${successCount} ဦးဉ\n❌ မပို့နိုင်သူ - ${failCount} ဦး`, 
       { parse_mode: 'HTML' }
     );
 
@@ -143,19 +143,21 @@ bot.on('message:photo', async (ctx) => {
 
   const repliedMessage = ctx.message.reply_to_message;
   
-  // Telegram တွင် reply လုပ်ထားသော မက်ဆေ့ခ်ျ၏ text, caption အပြင် quote နှင့် message caption များကိုပါ ရှာဖွေခြင်း
+  // Telegram တွင် reply/forward လုပ်ထားသော မူရင်း Post ၏ စာသားများကို စုံလင်စွာ ရှာဖွေခြင်း
   const postText = repliedMessage?.text || repliedMessage?.caption || '';
   const quoteText = repliedMessage?.quote?.text || '';
   const messageCaption = ctx.message.caption || '';
+  const forwardChatTitle = repliedMessage?.forward_origin?.chat?.title || '';
 
   const expectedKeyword = "WORLD BEST CRYPTO";
   
-  // သတ်မှတ်ထားသော keyword ပါဝင်မှု ရှိမရှိ အဖုံဖုံ စစ်ဆေးခြင်း
-  const hasCorrectText = postText.includes(expectedKeyword) || 
-                         quoteText.includes(expectedKeyword) || 
-                         messageCaption.includes(expectedKeyword);
+  // စာသားများထဲတွင် keyword ပါဝင်မှု ရှိမရှိ ပေါင်းစပ်စစ်ဆေးခြင်း
+  const combinedCheckText = `${postText} ${quoteText} ${messageCaption} ${forwardChatTitle}`;
+  const hasCorrectText = combinedCheckText.includes(expectedKeyword) || 
+                         postText.includes(expectedKeyword) || 
+                         quoteText.includes(expectedKeyword);
 
-  // အကယ်၍ Post စာသား မမှန်ကန်ပါက (သို့မဟုတ် အခြားနေရာတွင် တင်ထားပါက)
+  // အကယ်၍ မှန်ကန်သော Post မဟုတ်ပါက
   if (!hasCorrectText) {
     const errorMsg = `❌ <b>Invalid Post Proof!</b>\n` +
       `The screenshot does not match the official post (${expectedKeyword}). Please upload the correct reaction proof on the valid post!`;
@@ -169,7 +171,7 @@ bot.on('message:photo', async (ctx) => {
   }
 
   try {
-    // စာသားအမှန်ဖြစ်ပါက Verified လုပ်ပေးမည်
+    // စာသားကိုက်ညီပါက Verified အဖြစ် Supabase တွင် မှတ်တမ်းတင်ပေးမည်
     await supabase.from('users').upsert({
       telegram_id: userId,
       username: rawUsername,

@@ -38,7 +38,7 @@ bot.catch((err) => {
   console.error('Error in bot:', err);
 });
 
-// Helper Function to delete messages after delay
+// Delay ဖြင့် Background မှာ Message ဖျက်ပေးမည့် Helper Function
 const deleteMessageLater = (ctx, chatId, messageId, delay = 5000) => {
   const promise = (async () => {
     await sleep(delay);
@@ -56,7 +56,7 @@ const deleteMessageLater = (ctx, chatId, messageId, delay = 5000) => {
   }
 };
 
-// Direct Message Deletion
+// Direct Message Deletion (Default 10s for Warning)
 const deleteMessageDirect = async (chatId, messageId, delay = 10000) => {
   await sleep(delay);
   try {
@@ -67,7 +67,7 @@ const deleteMessageDirect = async (chatId, messageId, delay = 10000) => {
 };
 
 // ==========================================
-// Reaction Event: Auto sync user reaction to Supabase DB
+// Auto-Sync User Reactions to Supabase DB
 // ==========================================
 bot.on('message_reaction', async (ctx) => {
   try {
@@ -82,7 +82,7 @@ bot.on('message_reaction', async (ctx) => {
 
     const newReactions = reaction.new_reaction || [];
 
-    // Save to DB if reaction added
+    // User ပေးလိုက်သော Reaction များထဲတွင် Heart/Like ပါမပါ စစ်ဆေးခြင်း
     if (newReactions.length > 0) {
       await supabase.from('reactions').upsert({
         user_id: userId,
@@ -90,9 +90,7 @@ bot.on('message_reaction', async (ctx) => {
         message_id: messageId,
         created_at: new Date().toISOString()
       }, { onConflict: 'user_id,chat_id,message_id' });
-    } 
-    // Delete from DB if reaction removed
-    else {
+    } else {
       await supabase.from('reactions')
         .delete()
         .eq('user_id', userId)
@@ -179,7 +177,46 @@ bot.command('broadcast', async (ctx) => {
 });
 
 // ==========================================
-// 4. Slot Machine Dice Handling & Reaction Check
+// 4. Photo Proof Verification Handler
+// User မှ Reaction (❤️) ပေးထားသော Screenshot Photo ပို့ပါက စစ်ဆေးပေးမည်
+// ==========================================
+bot.on('message:photo', async (ctx) => {
+  const isComment = ctx.message.reply_to_message || ctx.message.is_topic_message;
+  if (!isComment) return;
+
+  const userId = ctx.from.id;
+  const rawUsername = ctx.from.username || ctx.from.first_name || `ID: ${userId}`;
+  const displayName = ctx.from.username ? `@${ctx.from.username}` : rawUsername;
+  const threadId = ctx.message.message_thread_id;
+
+  try {
+    // ဓာတ်ပုံ ပို့လာပါက DB ထဲတွင် Reaction Screenshot စစ်ဆေးအတည်ပြုချက် မှတ်မည်
+    await supabase.from('user_proofs').upsert({
+      user_id: userId,
+      has_photo_proof: true,
+      updated_at: new Date().toISOString()
+    }, { onConflict: 'user_id' });
+
+    const replyOptions = { 
+      parse_mode: 'HTML',
+      reply_to_message_id: ctx.message.message_id
+    };
+    if (threadId) replyOptions.message_thread_id = threadId;
+
+    const sentMsg = await ctx.reply(
+      `❤️ <b>Heart Reaction Screenshot Received!</b>\n\n` +
+      `Thank you ${displayName}! Your reaction proof is verified. You can now send 🎰 to spin!`, 
+      replyOptions
+    );
+
+    deleteMessageLater(ctx, ctx.chat.id, sentMsg.message_id, 5000);
+  } catch (err) {
+    console.error("Photo Proof Verification Error:", err);
+  }
+});
+
+// ==========================================
+// 5. Slot Machine Dice Handling & Reaction Verification
 // ==========================================
 bot.on('message:dice', async (ctx) => {
   if (!ctx.message.dice || ctx.message.dice.emoji !== '🎰') return;
@@ -197,29 +234,38 @@ bot.on('message:dice', async (ctx) => {
   const replyMsg = ctx.message.reply_to_message;
 
   // ----------------------------------------------------
-  // Reaction DB Verification Check
+  // Reaction (❤️) နှင့် Photo Proof ပို့ထားခြင်း ရှိမရှိ စစ်ဆေးခြင်း
   // ----------------------------------------------------
   let hasReacted = false;
 
   try {
+    // 1. Direct Telegram Reaction DB စစ်ဆေးခြင်း
     const { data: recData } = await supabase
       .from('reactions')
       .select('id')
       .eq('user_id', userId)
       .limit(1);
 
-    if (recData && recData.length > 0) {
+    // 2. Photo Proof Screenshot DB စစ်ဆေးခြင်း
+    const { data: proofData } = await supabase
+      .from('user_proofs')
+      .select('has_photo_proof')
+      .eq('user_id', userId)
+      .eq('has_photo_proof', true)
+      .maybeSingle();
+
+    if ((recData && recData.length > 0) || (proofData && proofData.has_photo_proof)) {
       hasReacted = true;
     }
   } catch (err) {
-    console.error("Reaction DB Check Error:", err);
+    console.error("Reaction Verification Error:", err);
   }
 
   // ----------------------------------------------------
-  // A. IF USER HAS NOT REACTED (Deny Access)
+  // A. IF USER HAS NOT GIVEN HEART REACTION OR SENT PHOTO PROOF
   // ----------------------------------------------------
   if (!hasReacted) {
-    // Delete original dice message immediately
+    // Dice ကို ချက်ချင်း ဖျက်မည်
     try {
       await ctx.api.deleteMessage(ctx.chat.id, ctx.message.message_id);
     } catch (e) {
@@ -249,22 +295,29 @@ bot.on('message:dice', async (ctx) => {
       warningOptions.reply_to_message_id = replyMsg.message_id;
     }
 
-    // Send Warning Message in English in the exact comment thread
+    // သတိပေးစာ ပို့မည် (လှည့်ခဲ့သည့် Comment Thread ထဲတွင်သာ ပို့မည်)
     const warningMsg = await ctx.reply(
       `⚠️ <b>Access Denied!</b>\n\n` +
-      `Hey ${displayName}, you must react (❤️ or 👍) to the post before spinning!\n\n` +
-      `👉 <a href="${postLink}">Click Here to React to Post</a>`,
+      `Hey ${displayName}, you must react (❤️ or 👍) to the post or reply with a <b>Screenshot Photo</b> before spinning!\n\n` +
+      `👉 <a href="${postLink}">Click Here to View Post & React</a>`,
       warningOptions
     );
 
-    // Auto-delete warning message after 10 seconds
+    // ၁၀ စက္ကန့်အကြာတွင် သတိပေးစာကို Auto ဖျက်မည်
     await deleteMessageDirect(ctx.chat.id, warningMsg.message_id, 10000);
     return;
   }
 
   // ----------------------------------------------------
-  // B. IF USER HAS REACTED (Calculate & Award Balance)
+  // B. IF USER HAS REACTED / VERIFIED (Calculate Result & Award Balance)
   // ----------------------------------------------------
+  // Spin ပြီးပါက Photo Proof status ကို Reset ပြန်လုပ်မည်
+  try {
+    await supabase.from('user_proofs').update({ has_photo_proof: false }).eq('user_id', userId);
+  } catch (err) {
+    console.error("Reset proof error:", err);
+  }
+
   let replyText = '';
   const winCombination = getSlotResult(diceValue);
   const reward = winCombination ? winCombination.reward : 0;
@@ -317,7 +370,6 @@ bot.on('message:dice', async (ctx) => {
     }
   }
 
-  // Reply Result in the exact comment thread
   const replyOptions = { 
     parse_mode: 'HTML',
     reply_to_message_id: ctx.message.message_id

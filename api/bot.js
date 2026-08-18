@@ -38,22 +38,30 @@ bot.catch((err) => {
   console.error('Error in bot:', err);
 });
 
-// Delay ဖြင့် Background မှာ Comment ထဲက Message များကို 5s ဖြင့် ဖျက်ပေးမည့် Helper Function
+// Vercel Serverless အတွက် 5s ဖြင့် ချက်ချင်းဖျက်ပေးမည့် သေချာသော Helper Function
 const deleteMessageLater = (ctx, chatId, messageId, delay = 5000) => {
-  const promise = (async () => {
-    await sleep(delay);
+  setTimeout(async () => {
     try {
       await ctx.api.deleteMessage(chatId, messageId);
     } catch (e) {
       console.error('Delete message failed:', e);
     }
-  })();
+  }, delay);
+};
 
-  if (ctx.waitUntil) {
-    ctx.waitUntil(promise);
-  } else if (ctx.state && ctx.state.waitUntil) {
-    ctx.state.waitUntil(promise);
+// Helper to get Post Link
+const getPostLink = (ctx) => {
+  const chatId = ctx.chat?.id;
+  const threadId = ctx.message?.message_thread_id || ctx.message?.reply_to_message?.message_id;
+  
+  if (chatId && threadId) {
+    let cleanChatId = chatId.toString();
+    if (cleanChatId.startsWith('-100')) {
+      cleanChatId = cleanChatId.substring(4);
+    }
+    return `https://t.me/c/${cleanChatId}/${threadId}`;
   }
+  return `https://t.me/Rampage528`;
 };
 
 // 1. /start Command
@@ -67,17 +75,17 @@ bot.command('start', async (ctx) => {
     `<blockquote><b>Balance = <code>0.0000 💎</code></b></blockquote>\n` +
     `<b>Mini Withdraw 0.05 GRAM💰,@Rampage528📢</b>`;
 
-  const sent = await ctx.reply(startMessage, { parse_mode: 'HTML' });
-  // Start command သည် Chat င်္ထဲတွင်ဖြစ်သဖြင့် ဖျက်ရန်မလို (သို့သော် လိုအပ်ပါက သုံးနိုင်သည်)
+  await ctx.reply(startMessage, { parse_mode: 'HTML' });
 });
 
 // 2. /spin Command
 bot.command('spin', async (ctx) => {
   const isComment = ctx.message.reply_to_message || ctx.message.is_topic_message;
+  const postLink = getPostLink(ctx);
   
   const promptText = `⚠️ <b>Proof Verification Required!</b>\n\n` +
     `Please react (❤️/👍) to the main post and upload the screenshot proof first.\n\n` +
-    `🔗 <b>Target Post:</b> <a href="https://t.me/Rampage528/1">Click Here To View Post</a>`;
+    `🔗 <b>Target Post:</b> <a href="${postLink}">Click Here To View Post</a>`;
 
   const sentMsg = await ctx.reply(promptText, { parse_mode: 'HTML', disable_web_page_preview: true });
   
@@ -162,7 +170,7 @@ bot.on('message:photo', async (ctx) => {
   deleteMessageLater(ctx, ctx.chat.id, successMsg.message_id, 5000);
 });
 
-// 5. Slot Machine Dice Handling (Comment ထဲတွင် ပုံမပါဘဲ Spin လှည့်လျှင် သတိပေးခြင်း)
+// 5. Slot Machine Dice Handling
 bot.on('message:dice', async (ctx) => {
   if (!ctx.message.dice || ctx.message.dice.emoji !== '🎰') return;
 
@@ -172,11 +180,11 @@ bot.on('message:dice', async (ctx) => {
   const repliedMessage = ctx.message.reply_to_message;
   const hasUserSentPhotoBefore = repliedMessage && repliedMessage.from && repliedMessage.from.id === ctx.from.id && repliedMessage.photo;
 
-  // ပုံမတင်ဘဲ တိုက်ရိုက် Spin လှည့်ထားပါက ပုံပါအတိုင်း သတိပေးစာပြမည်
   if (!hasUserSentPhotoBefore) {
+    const postLink = getPostLink(ctx);
     const warningText = `⚠️ <b>Proof Verification Required!</b>\n\n` +
       `Please react (❤️/👍) to the main post and upload the screenshot proof first.\n\n` +
-      `🔗 <b>Target Post:</b> <a href="https://t.me/Rampage528/1">Click Here To View Post</a>`;
+      `🔗 <b>Target Post:</b> <a href="${postLink}">Click Here To View Post</a>`;
 
     const warningMsg = await ctx.reply(warningText, { 
       parse_mode: 'HTML', 

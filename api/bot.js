@@ -121,7 +121,7 @@ bot.command('broadcast', async (ctx) => {
     await ctx.api.editMessageText(
       ctx.chat.id, 
       statusMsg.message_id, 
-      `✅ <b>Broadcast ပြီးစီးပါပြီ!</b>\n\n📤 ပို့ဆောင်နိုင်သူ - ${successCount} ဦး\n❌ မပို့နိုင်သူ - ${failCount} ဦး`, 
+      `✅ <b>Broadcast ပြီးစီးပါပြီ!</b>\n\n📤 ပို့ဆောင်နိုင်သူ - ${successCount} ဦးဉီး\n❌ မပို့နိုင်သူ - ${failCount} ဦး`, 
       { parse_mode: 'HTML' }
     );
 
@@ -132,7 +132,7 @@ bot.command('broadcast', async (ctx) => {
 });
 
 // ==========================================
-// 4. Handle Photo (Comment ထဲတွင် ပုံဖြင့် Proof တင်စစ်ဆေးခြင်း - ငွေလွှဲစလစ် တားဆီးရန်)
+// 4. Handle Photo (Comment ထဲတွင် ပုံဖြင့် Proof တင်စစ်ဆေးခြင်း - ငွေလွှဲစလစ်နှင့် အမှန်တကယ် Post စာသားပါပုံကို တင်းကျပ်စွာစစ်ဆေးရန်)
 // ==========================================
 bot.on('message:photo', async (ctx) => {
   const isComment = ctx.message.reply_to_message || ctx.message.is_topic_message;
@@ -155,7 +155,7 @@ bot.on('message:photo', async (ctx) => {
                              postText.includes(expectedKeyword) || 
                              quoteText.includes(expectedKeyword);
 
-  // 1. ငွေလွှဲစလစ် (သို့မဟုတ်) Receipt ပုံများတွင် ပါတတ်သော စာသားများကို တားဆီးရန်
+  // 1. ငွေလွှဲစလစ် (သို့မဟုတ်) ပြေစာပုံစံ အချက်အလက်များ ပါဝင်ပါက လုံးဝ (လုံးဝ) ပယ်ချရန်
   const lowerCaption = messageCaption.toLowerCase();
   const isReceiptOrInvalidImage = lowerCaption.includes('kbz') || 
                                   lowerCaption.includes('kpay') || 
@@ -165,13 +165,14 @@ bot.on('message:photo', async (ctx) => {
                                   lowerCaption.includes('bank') ||
                                   lowerCaption.includes('e-receipt') ||
                                   lowerCaption.includes('ကျပ်') ||
-                                  lowerCaption.includes('ငွေလွှဲ');
+                                  lowerCaption.includes('ငွေလွှဲ') ||
+                                  lowerCaption.includes('လုပ်ဆောင်သောချိန်') ||
+                                  lowerCaption.includes('လုပ်ဆောင်မှုအမှတ်');
 
-  // 2. Reaction (အသဲ ❤️ သို့မဟုတ် လက်မ 👍 စသည်ဖြင့်) ပါဝင်ကြောင်း သို့မဟုတ် Proof ပုံစံမှန်ကန်ကြောင်း သေချာစေရန် စစ်ဆေးခြင်း
-  // (အကယ်၍ ဓာတ်ပုံနှင့်အတူ Reaction ပေးထားကြောင်း ညွှန်ပြသော စာသား သို့မဟုတ် အနည်းဆုံး မမှန်ကန်သော ငွေလွှဲစလစ် စာသားများ ကင်းရှင်းရမည်)
+  // 2. သက်ဆိုင်ရာ Official Post ၏ စာသားပါဝင်မှုနှင့် ငွေလွှဲစလစ်ကင်းစင်မှုကို တင်းကျပ်စွာ စစ်ဆေးခြင်း
   if (!hasCorrectPostText || isReceiptOrInvalidImage) {
-    const errorMsg = `❌ <b>Invalid Reaction Proof!</b>\n` +
-      `Please upload a valid reaction screenshot (such as ❤️, 👍) on the official post (${expectedKeyword}), not a bank receipt or unrelated image!`;
+    const errorMsg = `❌ <b>Invalid Post Proof!</b>\n` +
+      `The screenshot does not match the official post (${expectedKeyword}) or contains a bank receipt/invalid image. Please upload a valid reaction screenshot on the correct post!`;
     
     const sentErr = await ctx.reply(errorMsg, {
       parse_mode: 'HTML',
@@ -182,7 +183,7 @@ bot.on('message:photo', async (ctx) => {
   }
 
   try {
-    // အရာရာ မှန်ကန်မှသာ Verified အဖြစ် Supabase တွင် မှတ်တမ်းတင်မည်
+    // မှန်ကန်သော Post ပုံစံဖြစ်မှသာ Verified အဖြစ် Supabase တွင် မှတ်တမ်းတင်မည်
     await supabase.from('users').upsert({
       telegram_id: userId,
       username: rawUsername,
@@ -227,12 +228,14 @@ bot.on('message:dice', async (ctx) => {
 
     // Verified မဖြစ်သေးပါက (သို့မဟုတ်) Database တွင် is_verified အမှန် မဖြစ်သေးပါက
     if (!user || !user.is_verified) {
+      // 1. လှည့်ထားသော Spin (Dice) မက်ဆေ့ခ်ျကို ချက်ချင်းပြန်ဖျက်မည်
       try {
         await ctx.api.deleteMessage(ctx.chat.id, ctx.message.message_id);
       } catch (e) {
         console.error("Failed to delete unverified dice message:", e);
       }
 
+      // 2. သက်ဆိုင်ရာ Post ၏ Direct Link ကို တည်ဆောက်ခြင်း
       let chatIdStr = String(ctx.chat.id);
       if (chatIdStr.startsWith('-100')) {
         chatIdStr = chatIdStr.substring(4); 

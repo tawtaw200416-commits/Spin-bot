@@ -60,6 +60,16 @@ const deleteMessageLater = (ctx, chatId, messageId, delay = 5000) => {
   }
 };
 
+// Reliable Helper to get Target Main Post ID from Reply context
+const getTargetPostId = (ctx) => {
+  const replyTo = ctx.message?.reply_to_message;
+  if (replyTo) {
+    // Return forwarded post id or message id of the target post being replied to
+    return replyTo.forward_from_message_id || replyTo.message_id;
+  }
+  return ctx.message?.message_thread_id || null;
+};
+
 const getPostLink = (ctx) => {
   const chatId = ctx.chat?.id;
   const replyTo = ctx.message?.reply_to_message;
@@ -163,7 +173,7 @@ bot.command('broadcast', async (ctx) => {
   }
 });
 
-// 4. Photo Verification Handling (Marks user as verified instantly)
+// 4. Photo Verification Handling (Stores specific post ID that user verified for)
 bot.on('message:photo', async (ctx) => {
   const isComment = ctx.message.reply_to_message || ctx.message.is_topic_message;
   if (!isComment) return;
@@ -172,6 +182,9 @@ bot.on('message:photo', async (ctx) => {
   const rawUsername = ctx.from.username || ctx.from.first_name || `ID: ${userId}`;
   const displayName = ctx.from.username ? `@${ctx.from.username}` : rawUsername;
   
+  const targetPostId = getTargetPostId(ctx);
+  const targetPostIdStr = targetPostId ? targetPostId.toString() : 'active';
+
   const photoCaption = ctx.message.caption || '';
   const isValidCaption = photoCaption.includes('WORLD BEST CRYPTO') || photoCaption.includes('game link');
 
@@ -195,11 +208,12 @@ bot.on('message:photo', async (ctx) => {
 
     const currentBalance = existingUser && existingUser.balance !== null ? parseFloat(existingUser.balance) : 0;
 
-    // Save verification status for the user
+    // Save verification state and the exact post ID the user verified for
     await supabase.from('users').upsert({
       telegram_id: userId,
       username: rawUsername,
       balance: currentBalance,
+      verified_post_id: targetPostIdStr,
       is_verified: true
     }, { onConflict: 'telegram_id' });
   } catch (e) {
@@ -208,7 +222,7 @@ bot.on('message:photo', async (ctx) => {
 
   const successMsg = await ctx.reply(
     `✅ <b>Verification Successful, ${displayName}!</b>\n` +
-    `Your screenshot is verified. You can now spin freely!`,
+    `Your screenshot is verified for this post. You can now spin freely here!`,
     { 
       parse_mode: 'HTML',
       reply_to_message_id: ctx.message.message_id
@@ -218,7 +232,7 @@ bot.on('message:photo', async (ctx) => {
   deleteMessageLater(ctx, ctx.chat.id, successMsg.message_id, 5000);
 });
 
-// 5. Slot Machine Dice Handling (Checks database for verification status)
+// 5. Slot Machine Dice Handling (Compares current post ID with user's verified post ID)
 bot.on('message:dice', async (ctx) => {
   if (!ctx.message.dice || ctx.message.dice.emoji !== '🎰') return;
 
@@ -254,24 +268,31 @@ bot.on('message:dice', async (ctx) => {
   const userId = ctx.from.id;
   const rawUsername = ctx.from.username || ctx.from.first_name || `ID: ${userId}`;
   const displayName = ctx.from.username ? `@${ctx.from.username}` : rawUsername;
+  
+  // Get the current post ID where the user is trying to spin
+  const currentSpinPostId = getTargetPostId(ctx);
+  const currentSpinPostIdStr = currentSpinPostId ? currentSpinPostId.toString() : 'active';
 
-  let isUserVerified = false;
+  let isVerifiedForThisPost = false;
   try {
     const { data: userRecord } = await supabase
       .from('users')
-      .select('is_verified, balance')
+      .select('is_verified, verified_post_id, balance')
       .eq('telegram_id', userId)
       .maybeSingle();
 
+    // Check if user is verified AND verified for this specific post ID
     if (userRecord && userRecord.is_verified === true) {
-      isUserVerified = true;
+      if (!userRecord.verified_post_id || userRecord.verified_post_id === currentSpinPostIdStr) {
+        isVerifiedForThisPost = true;
+      }
     }
   } catch (e) {
     console.error("Check verification error:", e);
   }
 
-  // If user is not verified in DB, delete spin and ask for screenshot
-  if (!isUserVerified) {
+  // If user hasn't verified for this new post yet, delete spin and ask for screenshot
+  if (!isVerifiedForThisPost) {
     try {
       await ctx.api.deleteMessage(ctx.chat.id, ctx.message.message_id);
     } catch (e) {
@@ -279,8 +300,8 @@ bot.on('message:dice', async (ctx) => {
     }
 
     const postLink = getPostLink(ctx);
-    const warningText = `⚠️ <b>Proof Verification Required!</b>\n\n` +
-      `Your spin was deleted because you haven't verified yet! Please send a screenshot reply with reaction (❤️ / 👍) and caption <code>WORLD BEST CRYPTO</code> first!\n\n` +
+    const warningText = `⚠️ <b>New Post Verification Required!</b>\n\n` +
+      `Your spin was deleted because this is a new post! Please send a screenshot reply with reaction (❤️ / 👍) and caption <code>WORLD BEST CRYPTO</code> on this new post first!\n\n` +
       `🔗 <b>Target Post:</b> <a href="${postLink}">Click Here To View Post</a>`;
 
     const warningMsg = await ctx.reply(warningText, { 
@@ -294,7 +315,7 @@ bot.on('message:dice', async (ctx) => {
     return;
   }
 
-  // User is verified, execute spin and reward
+  // Process the spin successfully since user is verified for this post
   const diceValue = ctx.message.dice.value;
   let replyText = '';
   const winCombination = getSlotResult(diceValue);
@@ -318,7 +339,8 @@ bot.on('message:dice', async (ctx) => {
       telegram_id: userId,
       username: rawUsername,
       balance: newBalance,
-      is_verified: true
+      is_verified: true,
+      verified_post_id: currentSpinPostIdStr
     }, { onConflict: 'telegram_id' });
 
     if (winCombination) {

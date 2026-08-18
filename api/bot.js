@@ -157,7 +157,7 @@ bot.on('message:photo', async (ctx) => {
                              postCaption.includes(expectedKeyword) || 
                              quoteText.includes(expectedKeyword);
 
-  // ငွေလွှဲစလစ် (သို့မဟုတ်) ဘဏ်ငွေလွှဲပြေစာ ပုံများဖြစ်ကြောင်း တားဆီးစစ်ဆေးခြင်း
+  // 1. ငွေလွှဲစလစ် (သို့မဟုတ်) ဘဏ်ငွေလွှဲပြေစာ ပုံများဖြစ်ကြောင်း တားဆီးစစ်ဆေးခြင်း
   const lowerCaption = messageCaption.toLowerCase();
   const isReceiptOrInvalidImage = lowerCaption.includes('kbz') || 
                                   lowerCaption.includes('kpay') || 
@@ -170,9 +170,8 @@ bot.on('message:photo', async (ctx) => {
                                   lowerCaption.includes('ငွေလွှဲ') ||
                                   lowerCaption.includes('လုပ်ဆောင်သောချိန်');
 
-  // အကယ်၍ Post စာသား မမှန်ကန်ခြင်း (သို့မဟုတ်) ငွေလွှဲစလစ်ပုံဖြစ်နေပါက
+  // အကယ်၍ Post စာသား မမှန်ကန်ပါက (သို့မဟုတ်) ငွေလွှဲစလစ်ဖြစ်နေပါက ပုံကိုဖျက်ပြီး အမှားပြမည်
   if (!hasCorrectPostText || isReceiptOrInvalidImage) {
-    // 1. User တင်လိုက်သော မှားယွင်းသည့် ပုံမက်ဆေ့ခ်ျကိုပါ ချက်ချင်းဖျက်မည်
     try {
       await ctx.api.deleteMessage(ctx.chat.id, ctx.message.message_id);
     } catch (e) {
@@ -180,7 +179,7 @@ bot.on('message:photo', async (ctx) => {
     }
 
     const errorMsg = `❌ <b>Invalid Post Proof!</b>\n` +
-      `The screenshot does not match the official post (${expectedKeyword}) or contains a bank receipt. Please upload a valid reaction screenshot showing that you gave a reaction (such as ❤️, 👍, or rec) on the correct official post!`;
+      `The screenshot does not match the official post (${expectedKeyword}) or contains a bank receipt/invalid image. Please upload a valid reaction screenshot (such as ❤️, 👍, or reaction) on the correct post!`;
     
     const sentErr = await ctx.reply(errorMsg, {
       parse_mode: 'HTML'
@@ -198,7 +197,7 @@ bot.on('message:photo', async (ctx) => {
     }, { onConflict: 'telegram_id' });
 
     const replyText = `✅ <b>Post Proof Verified Successfully!</b>\n` +
-      `Your reaction screenshot (❤️, 👍, or rec) for this official post is confirmed. You can now roll 🎰 to spin!`;
+      `Your reaction screenshot (❤️, 👍) for this post is confirmed. You can now roll 🎰 to spin in this comment!`;
 
     const sentMsg = await ctx.reply(replyText, {
       parse_mode: 'HTML',
@@ -235,7 +234,6 @@ bot.on('message:dice', async (ctx) => {
 
     // Verified မဖြစ်သေးပါက (သို့မဟုတ်) Database တွင် is_verified အမှန် မဖြစ်သေးပါက
     if (!user || !user.is_verified) {
-      // 1. လှည့်ထားသော Spin (Dice) မက်ဆေ့ခ်ျကို ချက်ချင်းပြန်ဖျက်မည်
       try {
         await ctx.api.deleteMessage(ctx.chat.id, ctx.message.message_id);
       } catch (e) {

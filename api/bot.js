@@ -205,8 +205,18 @@ bot.on('message:dice', async (ctx) => {
   if (!ctx.message.dice || ctx.message.dice.emoji !== '🎰') return;
 
   const isComment = ctx.message.reply_to_message || ctx.message.is_topic_message;
+  
+  const replyOptions = { 
+    parse_mode: 'HTML',
+    reply_to_message_id: ctx.message.message_id
+  };
+  
+  if (ctx.message.message_thread_id) {
+    replyOptions.message_thread_id = ctx.message.message_thread_id;
+  }
+
   if (!isComment) {
-    // If sent directly in group main chat instead of post comment/thread
+    // If sent directly in group main chat instead of post comment/thread, delete spin and reply strictly inside comment context or chat with 5s delete
     try {
       await ctx.api.deleteMessage(ctx.chat.id, ctx.message.message_id);
     } catch (e) {
@@ -243,7 +253,7 @@ bot.on('message:dice', async (ctx) => {
     console.error("Check verification error:", e);
   }
 
-  // If not verified, instantly delete the unverified spin dice message and send warning that auto-deletes in 5 seconds
+  // If not verified, instantly delete the unverified spin dice message and send warning reply that auto-deletes in 5 seconds
   if (!isVerified) {
     try {
       await ctx.api.deleteMessage(ctx.chat.id, ctx.message.message_id);
@@ -258,14 +268,16 @@ bot.on('message:dice', async (ctx) => {
 
     const warningMsg = await ctx.reply(warningText, { 
       parse_mode: 'HTML', 
-      disable_web_page_preview: true
+      disable_web_page_preview: true,
+      reply_to_message_id: ctx.message.reply_to_message ? ctx.message.reply_to_message.message_id : undefined,
+      message_thread_id: ctx.message.message_thread_id
     });
 
     deleteMessageLater(ctx, ctx.chat.id, warningMsg.message_id, 5000);
     return;
   }
 
-  // If verified, process spin results and correctly accumulate balance
+  // If verified, process spin results and correctly accumulate balance, replying directly to user's comment
   const diceValue = ctx.message.dice.value;
   let replyText = '';
   const winCombination = getSlotResult(diceValue);
@@ -308,15 +320,6 @@ bot.on('message:dice', async (ctx) => {
       `<b>Mini Withdraw = 0.05 GRAM💰,@Rampage528📢</b>`;
   }
 
-  const replyOptions = { 
-    parse_mode: 'HTML',
-    reply_to_message_id: ctx.message.message_id
-  };
-  
-  if (ctx.message.message_thread_id) {
-    replyOptions.message_thread_id = ctx.message.message_thread_id;
-  }
-
   const sentMsg = await ctx.reply(replyText, replyOptions);
   deleteMessageLater(ctx, ctx.chat.id, sentMsg.message_id, 5000);
 });
@@ -339,7 +342,7 @@ module.exports = async (req, res, context) => {
         context && context.waitUntil ? context.waitUntil.bind(context) : undefined
       );
 
-      res.status(response.status);
+      res.status(status = response.status);
       const text = await response.text();
       return res.send(text);
     } catch (err) {

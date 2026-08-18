@@ -147,7 +147,7 @@ bot.command('broadcast', async (ctx) => {
 
   } catch (err) {
     console.error("Broadcast Error:", err);
-    await ctx.reply('❌ Error occurred during broadcast.');
+    ctx.reply('❌ Error occurred during broadcast.');
   }
 });
 
@@ -161,22 +161,14 @@ bot.on('message:photo', async (ctx) => {
   const displayName = ctx.from.username ? `@${ctx.from.username}` : rawUsername;
 
   const repliedMessage = ctx.message.reply_to_message;
-  const repliedText = repliedMessage ? (repliedMessage.text || repliedMessage.caption || '') : '';
+  const repliedUserId = repliedMessage?.from?.id;
+  const botId = ctx.me.id;
 
-  // စစ်ဆေးချက် ၁ - Bot ရဲ့ Prompt Message ကို Reply ပေးထားခြင်း ဟုတ်မဟုတ် စစ်မည် (မှားနေလျှင် ပယ်မည်)
-  const isBotPrompt = repliedText.includes('Proof Verification Required') || 
-                      repliedText.includes('Target Post') || 
-                      repliedText.includes('Verification Successful');
-
-  // စစ်ဆေးချက် ၂ - မူရင်း Channel Post ၏ အဓိကစာသား အစစ်အမှန် ပါဝင်ရမည်
-  const isRealChannelPost = repliedText.includes('WORLD BEST CRYPTO') || 
-                            (repliedText.includes('game link') && repliedText.includes('invite code'));
-
-  // အကယ်၍ Bot Prompt ကို Reply ပေးမိပါက သို့မဟုတ် မူရင်း Post အစစ်မဟုတ်ပါက တားဆီးမည်
-  if (isBotPrompt || !isRealChannelPost) {
+  // STRICT CHECK: If the user replied directly to the Bot's message (like warning/prompt), reject it immediately!
+  if (repliedUserId === botId) {
     const errorMsg = await ctx.reply(
       `❌ <b>Invalid Verification!</b>\n` +
-      `You must reply directly to the <b>original channel post</b>, not to the bot's warning message!`,
+      `You replied to the bot's message instead of the channel post. Please reply directly to the original post with your screenshot!`,
       { parse_mode: 'HTML', reply_to_message_id: ctx.message.message_id }
     );
     deleteMessageLater(ctx, ctx.chat.id, ctx.message.message_id, 5000);
@@ -184,7 +176,24 @@ bot.on('message:photo', async (ctx) => {
     return;
   }
 
-  // အကယ်၍ အားလုံးမှန်ကန်မှသာ Supabase တွင် is_verified = true လို့ မှတ်မည်
+  const repliedText = repliedMessage ? (repliedMessage.text || repliedMessage.caption || '') : '';
+
+  // Additional check: Ensure the replied message contains the required channel post keyword
+  const isRealChannelPost = repliedText.includes('WORLD BEST CRYPTO') || 
+                            (repliedText.includes('game link') && repliedText.includes('invite code'));
+
+  if (!isRealChannelPost) {
+    const errorMsg = await ctx.reply(
+      `❌ <b>Invalid Screenshot!</b>\n` +
+      `This is not a valid channel post. Please reply to the correct post.`,
+      { parse_mode: 'HTML', reply_to_message_id: ctx.message.message_id }
+    );
+    deleteMessageLater(ctx, ctx.chat.id, ctx.message.message_id, 5000);
+    deleteMessageLater(ctx, ctx.chat.id, errorMsg.message_id, 5000);
+    return;
+  }
+
+  // Save verification status to Supabase
   try {
     await supabase.from('users').upsert({
       telegram_id: userId,
@@ -276,7 +285,7 @@ bot.on('message:dice', async (ctx) => {
       telegram_id: userId,
       username: rawUsername,
       balance: newBalance,
-      is_verified: false // Reset verification after spin if you want them to verify every time
+      is_verified: false // Reset verification after spin
     }, { onConflict: 'telegram_id' });
 
     if (winCombination) {

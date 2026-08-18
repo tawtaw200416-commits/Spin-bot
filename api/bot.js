@@ -76,7 +76,7 @@ const isCommentSection = (ctx) => {
 const getTargetPostId = (ctx) => {
   const replyTo = ctx.message?.reply_to_message;
   if (replyTo) {
-    return replyTo.forward_from_message_id || replyTo.message_id || replyTo.reply_to_message?.message_id || null;
+    return replyTo.forward_from_message_id || replyTo.message_id || null;
   }
   return ctx.message?.message_thread_id || null;
 };
@@ -256,7 +256,7 @@ bot.on('message:photo', async (ctx) => {
   // Verify အောင်မြင်ကြောင်းစာသား
   const successMsg = await ctx.reply(
     `✅ <b>Complete Verified User: ${displayName}!</b>\n` +
-    `Your screenshot is successfully verified. You can now spin freely in this post thread without restriction! 🎰`,
+    `Your screenshot is successfully verified. You can now spin freely without restriction! 🎰`,
     { 
       parse_mode: 'HTML',
       reply_to_message_id: ctx.message.reply_to_message ? ctx.message.reply_to_message.message_id : undefined,
@@ -288,7 +288,7 @@ bot.on('message:dice', async (ctx) => {
       .eq('telegram_id', userId)
       .maybeSingle();
 
-    // အရေးကြီးပြောင်းလဲချက်: User သည် Database တွင် is_verified: true ဖြစ်နေပြီဆိုပါက Post ID တိုက်စစ်စရာမလိုဘဲ အမြဲတမ်း Spin လှည့်ခွင့်ပေးမည်
+    // ပြင်ဆင်ချက်: Database တွင် is_verified: true ဖြစ်နေပြီဆိုပါက Post ID ထပ်စစ်စရာမလိုဘဲ အမြဲတမ်း spin လှည့်ခွင့်ပေးမည်
     if (userRecord && userRecord.is_verified === true) {
       isVerifiedForThisPost = true;
     }
@@ -320,7 +320,7 @@ bot.on('message:dice', async (ctx) => {
     return;
   }
 
-  // Verify ပြီးသား user ဖြစ်ပါက Spin ကို မဖျက်ဘဲ ဆက်လက်ကစားခွင့်ပေးမည်
+  // Verify ပြီးသားဖြစ်ပါက Spin ကို မဖျက်ဘဲ ဆက်လက်ကစားခွင့်ပေးမည်
   const diceValue = ctx.message.dice.value;
   let replyText = '';
   const winCombination = getSlotResult(diceValue);

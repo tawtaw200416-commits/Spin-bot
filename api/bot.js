@@ -9,6 +9,9 @@ const BOT_TOKEN = process.env.BOT_TOKEN || '8566391789:AAHxMWzB5EERqVAHI7Uf7rQod
 const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 const bot = new Bot(BOT_TOKEN);
 
+// Spin လှည့်ထားသူများ၏ Slot Result မထုတ်မီ ခလုတ်ခုံ (Pending Spin) များကို ခဏမှတ်ထားမည့် Database/Memory Object
+const pendingSpins = new Map();
+
 // Sleep Helper Function
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -39,7 +42,7 @@ bot.catch((err) => {
 });
 
 // Delay ဖြင့် Background မှာ Message ဖျက်ပေးမည့် Helper Function
-const deleteMessageLater = (ctx, chatId, messageId, delay = 5000) => {
+const deleteMessageLater = (ctx, chatId, messageId, delay = 10000) => {
   const promise = (async () => {
     await sleep(delay);
     try {
@@ -57,7 +60,7 @@ const deleteMessageLater = (ctx, chatId, messageId, delay = 5000) => {
 };
 
 // Direct Message Deletion
-const deleteMessageDirect = async (chatId, messageId, delay = 5000) => {
+const deleteMessageDirect = async (chatId, messageId, delay = 10000) => {
   await sleep(delay);
   try {
     await bot.api.deleteMessage(chatId, messageId);
@@ -65,44 +68,6 @@ const deleteMessageDirect = async (chatId, messageId, delay = 5000) => {
     console.error(`Direct delete message failed for ${messageId}:`, e.message);
   }
 };
-
-// ==========================================
-// Reaction Event: User မည်သည့် Post/Channel မှာ ပေးပေး DB ထဲ အတိအကျ မှတ်မည်
-// ==========================================
-bot.on('message_reaction', async (ctx) => {
-  try {
-    const reaction = ctx.messageReaction;
-    if (!reaction) return;
-
-    const userId = reaction.user?.id;
-    const chatId = reaction.chat.id;
-    const messageId = reaction.message_id;
-
-    if (!userId) return;
-
-    const newReactions = reaction.new_reaction || [];
-
-    // Reaction ရှိပါက DB တွင် Update လုပ်မည်
-    if (newReactions.length > 0) {
-      await supabase.from('reactions').upsert({
-        user_id: userId,
-        chat_id: chatId,
-        message_id: messageId,
-        created_at: new Date().toISOString()
-      }, { onConflict: 'user_id,chat_id,message_id' });
-    } 
-    // Reaction ပြန်ဖြုတ်လိုက်ပါက DB မှ ဖျက်မည်
-    else {
-      await supabase.from('reactions')
-        .delete()
-        .eq('user_id', userId)
-        .eq('chat_id', chatId)
-        .eq('message_id', messageId);
-    }
-  } catch (err) {
-    console.error('Error handling message_reaction event:', err);
-  }
-});
 
 // 1. /start Command
 bot.command('start', async (ctx) => {
@@ -119,66 +84,37 @@ bot.command('start', async (ctx) => {
   deleteMessageLater(ctx, ctx.chat.id, sent.message_id, 5000);
 });
 
-// 2. /spin Command
-bot.command('spin', async (ctx) => {
-  await ctx.replyWithDice('🎰');
-});
-
-// 3. Admin Broadcast Command
+// 2. Admin Broadcast Command
 bot.command('broadcast', async (ctx) => {
   const userId = ctx.from?.id;
-  
-  if (userId !== 1793453606) {
-    return ctx.reply('❌ This command is restricted.');
-  }
+  if (userId !== 1793453606) return ctx.reply('❌ Restricted.');
 
   const customMessage = ctx.match;
-
-  if (!customMessage) {
-    return ctx.reply('⚠️ ကျေးဇူးပြု၍ ပို့လိုသော စာသားကို ထည့်ပါ။\n\n<b>ပုံစံ -</b> <code>/broadcast your_message_here</code>', { parse_mode: 'HTML' });
-  }
+  if (!customMessage) return ctx.reply('⚠️ စာသား ထည့်ပါ။');
 
   try {
-    const { data: users, error } = await supabase
-      .from('users')
-      .select('telegram_id');
+    const { data: users } = await supabase.from('users').select('telegram_id');
+    if (!users || users.length === 0) return ctx.reply('❌ User မရှိပါ။');
 
-    if (error || !users || users.length === 0) {
-      return ctx.reply('❌ Database မှ User စာရင်းများကို ဆွဲထုတ်၍ မရပါ (သို့) User မရှိပါ။');
-    }
-
-    const statusMsg = await ctx.reply(`🚀 User ${users.length} ဦးထံသို့ စတင်ပို့ဆောင်နေပါပြီ...`);
-
-    let successCount = 0;
-    let failCount = 0;
-
+    let successCount = 0, failCount = 0;
     for (const user of users) {
       try {
-        await ctx.api.sendMessage(user.telegram_id, customMessage, {
-          parse_mode: 'HTML',
-          disable_web_page_preview: false
-        });
+        await ctx.api.sendMessage(user.telegram_id, customMessage, { parse_mode: 'HTML' });
         successCount++;
-        await sleep(50); 
+        await sleep(50);
       } catch (err) {
-        failCount++; 
+        failCount++;
       }
     }
-
-    await ctx.api.editMessageText(
-      ctx.chat.id, 
-      statusMsg.message_id, 
-      `✅ <b>Broadcast ပြီးစီးပါပြီ!</b>\n\n📤 ပို့ဆောင်နိုင်သူ - ${successCount} ဦး\n❌ မပို့နိုင်သူ - ${failCount} ဦး`, 
-      { parse_mode: 'HTML' }
-    );
-
+    await ctx.reply(`✅ Broadcast ပြီးပါပြီ!\nအောင်မြင် - ${successCount}\nကျရှုံး - ${failCount}`);
   } catch (err) {
-    console.error("Broadcast Error:", err);
-    await ctx.reply('❌ Broadcast လုပ်ရာတွင် အမှားအယွင်း ရှိနေပါသည်။');
+    console.error(err);
   }
 });
 
-// 4. Slot Machine Dice Handling
+// ==========================================
+// 3. Slot Machine Dice Handling
+// ==========================================
 bot.on('message:dice', async (ctx) => {
   if (!ctx.message.dice || ctx.message.dice.emoji !== '🎰') return;
 
@@ -194,77 +130,66 @@ bot.on('message:dice', async (ctx) => {
   const threadId = ctx.message.message_thread_id;
   const replyMsg = ctx.message.reply_to_message;
 
-  // ----------------------------------------------------
-  // Reaction စစ်ဆေးခြင်း (Channel / Group Post ID လွဲနေသော်လည်း မိအောင်စစ်ပေးမည်)
-  // ----------------------------------------------------
-  let hasReacted = false;
-
+  // Dice Message ကို အရင် ဖျက်မည်
   try {
-    // DB ထဲမှာ အဆိုပါ User_ID ဖြင့် Reaction ပေးထားသမျှ စစ်ဆေးမည်
-    const { data: recData } = await supabase
-      .from('reactions')
-      .select('id')
-      .eq('user_id', userId)
-      .limit(1);
-
-    if (recData && recData.length > 0) {
-      hasReacted = true;
-    }
-  } catch (err) {
-    console.error("Reaction DB Check Error:", err);
+    await ctx.api.deleteMessage(ctx.chat.id, ctx.message.message_id);
+  } catch (e) {
+    console.error("Error deleting dice:", e.message);
   }
 
-  // ----------------------------------------------------
-  // A. Reaction မပေးထားလျှင်
-  // ----------------------------------------------------
-  if (!hasReacted) {
-    // Dice ကို ဖျက်မည်
-    try {
-      await ctx.api.deleteMessage(ctx.chat.id, ctx.message.message_id);
-    } catch (e) {
-      console.error("Error deleting dice:", e.message);
+  // Pending Spin အဖြစ် ယာယီသိမ်းထားမည်
+  pendingSpins.set(userId, {
+    diceValue: diceValue,
+    timestamp: Date.now()
+  });
+
+  const finalPostId = threadId || (replyMsg ? replyMsg.message_id : ctx.message.message_id);
+  let channelUsername = replyMsg?.forward_from_chat?.username || ctx.chat.username;
+  let postLink = channelUsername 
+    ? `https://t.me/${channelUsername}/${finalPostId}`
+    : `https://t.me/c/${ctx.chat.id.toString().replace('-100', '')}/${finalPostId}`;
+
+  // User ထံ Reaction ပေးပြီး Proof ပုံပြန်ပို့ရန် သတိပေးစာ ပို့မည်
+  const warningMsg = await ctx.reply(
+    `📸 <b>Reaction & Photo Proof Required!</b>\n\n` +
+    `Hey ${displayName}, spin မလှည့်မီ Post အား Reaction (❤️ သို့မဟုတ် 👍) ပေးထားသော <b>Screenshot ပုံ</b> ကို Reply ပြန်ပို့ပေးရပါမည်။\n\n` +
+    `👉 <a href="${postLink}">Click Here to View Post</a>\n\n` +
+    `<i>⚠️ Reaction ပေးထားသည့် ပုံ (Photo) ကို ဤနေရာတွင် Reply ပေးပြီးမှသာ Spin ရလဒ် ထွက်လာပါမည်။</i>`,
+    { 
+      parse_mode: 'HTML', 
+      disable_web_page_preview: true,
+      message_thread_id: threadId 
     }
+  );
 
-    const finalPostId = threadId || (replyMsg ? replyMsg.message_id : ctx.message.message_id);
-    let postLink = '';
-    
-    let channelUsername = replyMsg?.forward_from_chat?.username || ctx.chat.username;
-    if (channelUsername) {
-      postLink = `https://t.me/${channelUsername}/${finalPostId}`;
-    } else {
-      const cleanChatId = ctx.chat.id.toString().replace('-100', '');
-      postLink = `https://t.me/c/${cleanChatId}/${finalPostId}`;
-    }
+  // စာအိတ်ကို ၁၀ စက္ကန့် (10 seconds) အကြာတွင် auto ဖျက်မည်
+  deleteMessageDirect(ctx.chat.id, warningMsg.message_id, 10000);
+});
 
-    const warningOptions = { 
-      parse_mode: 'HTML',
-      disable_web_page_preview: true
-    };
+// ==========================================
+// 4. User ထံမှ ဓာတ်ပုံ (Photo Proof) ရောက်ရှိလာသည့်အခါ စစ်ဆေးမည်
+// ==========================================
+bot.on('message:photo', async (ctx) => {
+  const isComment = ctx.message.reply_to_message || ctx.message.is_topic_message;
+  if (!isComment) return;
 
-    if (threadId) {
-      warningOptions.message_thread_id = threadId;
-    }
-    if (replyMsg) {
-      warningOptions.reply_to_message_id = replyMsg.message_id;
-    }
+  const userId = ctx.from.id;
+  const pending = pendingSpins.get(userId);
 
-    const warningMsg = await ctx.reply(
-      `⚠️ <b>Access Denied!</b>\n\n` +
-      `Hey ${displayName}, you must react (❤️ or 👍) to the post before spinning!\n\n` +
-      `👉 <a href="${postLink}">Click Here to React to Post</a>`,
-      warningOptions
-    );
+  // Spin လှည့်ထားခြင်း မရှိပါက (သို့မဟုတ် ၁၀ မိနစ်ထက် ကျော်သွားပါက) လျစ်လျူရှုမည်
+  if (!pending) return;
 
-    await deleteMessageDirect(ctx.chat.id, warningMsg.message_id, 5000);
-    return;
-  }
+  const diceValue = pending.diceValue;
+  pendingSpins.delete(userId); // Pending ထဲမှ ဖျက်မည်
 
-  // ----------------------------------------------------
-  // B. Reaction ပေးထားလျှင် အမှတ်ပေါင်းမည်
-  // ----------------------------------------------------
-  let replyText = '';
+  const rawUsername = ctx.from.username || ctx.from.first_name || `ID: ${userId}`;
+  const displayName = ctx.from.username ? `@${ctx.from.username}` : rawUsername;
+  const threadId = ctx.message.message_thread_id;
+
+  // Spin ရလဒ် တွက်ချက်ခြင်း
   const winCombination = getSlotResult(diceValue);
   const reward = winCombination ? winCombination.reward : 0;
+  let replyText = '';
 
   try {
     let { data: user } = await supabase
@@ -274,11 +199,7 @@ bot.on('message:dice', async (ctx) => {
       .maybeSingle();
 
     let currentBalance = user && user.balance ? parseFloat(user.balance) : 0;
-    let newBalance = currentBalance;
-
-    if (reward > 0) {
-      newBalance = Math.round((currentBalance + reward) * 1000000) / 1000000;
-    }
+    let newBalance = reward > 0 ? Math.round((currentBalance + reward) * 1000000) / 1000000 : currentBalance;
 
     await supabase.from('users').upsert({
       telegram_id: userId,
@@ -298,33 +219,17 @@ bot.on('message:dice', async (ctx) => {
     }
   } catch (error) {
     console.error("Supabase Error:", error);
-    try {
-      let { data: user } = await supabase
-        .from('users')
-        .select('balance')
-        .eq('telegram_id', userId)
-        .maybeSingle();
-      let currentBalance = user && user.balance ? parseFloat(user.balance) : 0;
-      replyText = `❌ <b>Try again ${displayName}! Better luck next time.</b>\n` +
-        `<blockquote><b>Balance = <code>${currentBalance.toFixed(6)} 💎</code></b></blockquote>\n` +
-        `<b>Mini Withdraw = 0.05 GRAM💰,@Rampage528📢</b>`;
-    } catch (e) {
-      replyText = `❌ <b>Try again ${displayName}! Better luck next time.</b>\n` +
-        `<b>Mini Withdraw = 0.05 GRAM💰,@REFERWORLD1📢</b>`;
-    }
+    replyText = `❌ <b>Try again ${displayName}! Better luck next time.</b>`;
   }
 
-  // Spin ရလဒ် ပြသခြင်း
-  const replyOptions = { 
-    parse_mode: 'HTML',
-    reply_to_message_id: ctx.message.message_id
-  };
-  
-  if (threadId) {
-    replyOptions.message_thread_id = threadId;
-  }
+  // Spin ရလဒ် ထုတ်ပြန်ပေးမည်
+  const sentMsg = await ctx.reply(replyText, { 
+    parse_mode: 'HTML', 
+    reply_to_message_id: ctx.message.message_id,
+    message_thread_id: threadId 
+  });
 
-  const sentMsg = await ctx.reply(replyText, replyOptions);
+  // ရလဒ်စာသားအား ၅ စက္ကန့်အကြာတွင် ဖျက်မည်
   deleteMessageLater(ctx, ctx.chat.id, sentMsg.message_id, 5000);
 });
 
@@ -361,9 +266,9 @@ module.exports = async (req, res, context) => {
       const webhookUrl = `https://${host}/api/index`; 
       
       await bot.api.setWebhook(webhookUrl, {
-        allowed_updates: ["message", "edited_message", "channel_post", "edited_channel_post", "message_reaction", "message_reaction_count"]
+        allowed_updates: ["message", "edited_message", "channel_post", "edited_channel_post"]
       });
-      return res.status(200).send('Webhook configured successfully with reaction updates!');
+      return res.status(200).send('Webhook configured successfully!');
     } catch (e) {
       return res.status(200).send('Status: Active!');
     }

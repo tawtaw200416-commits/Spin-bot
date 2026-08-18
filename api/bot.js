@@ -60,17 +60,14 @@ const deleteMessageLater = (ctx, chatId, messageId, delay = 5000) => {
   }
 };
 
-// Fixed Helper to get Precise Target Post ID for Per-Post Verification
+// Fixed Helper to get Precise Target Post ID for Per-Post Verification Tracking
 const getPostDetails = (ctx) => {
   const chatId = ctx.chat?.id;
-  
-  // If it's a comment, reply_to_message.message_id refers to the original channel post/topic identifier
   const replyTo = ctx.message?.reply_to_message;
   let postId = null;
 
   if (replyTo) {
-    // If the replied message is itself a reply to another message or channel post
-    postId = replyTo.message_id;
+    postId = replyTo.forward_from_message_id || replyTo.message_id;
   } else {
     postId = ctx.message?.message_thread_id || null;
   }
@@ -192,7 +189,8 @@ bot.on('message:photo', async (ctx) => {
   const userId = ctx.from.id;
   const rawUsername = ctx.from.username || ctx.from.first_name || `ID: ${userId}`;
   const displayName = ctx.from.username ? `@${ctx.from.username}` : rawUsername;
-  const { postId } = getPostDetails(ctx);
+  
+  const targetPostId = ctx.message.reply_to_message?.message_id ? ctx.message.reply_to_message.message_id.toString() : 'default';
 
   const photoCaption = ctx.message.caption || '';
   const isValidCaption = photoCaption.includes('WORLD BEST CRYPTO') || photoCaption.includes('game link');
@@ -200,7 +198,7 @@ bot.on('message:photo', async (ctx) => {
   if (!isValidCaption) {
     const errorMsg = await ctx.reply(
       `❌ <b>Invalid Verification!</b>\n` +
-      `Please send a screenshot with reaction (❤️ / 👍) given to the post and caption <code>WORLD BEST CRYPTO</code> by replying directly to the target post!`,
+      `Your screenshot was rejected because the caption is incorrect! Please include caption <code>WORLD BEST CRYPTO</code> and reaction (❤️ / 👍).`,
       { parse_mode: 'HTML', reply_to_message_id: ctx.message.message_id }
     );
     deleteMessageLater(ctx, ctx.chat.id, ctx.message.message_id, 5000);
@@ -209,10 +207,20 @@ bot.on('message:photo', async (ctx) => {
   }
 
   try {
+    // Fetch existing user balance to preserve it during verification upsert
+    let { data: existingUser } = await supabase
+      .from('users')
+      .select('balance')
+      .eq('telegram_id', userId)
+      .maybeSingle();
+
+    const currentBalance = existingUser && existingUser.balance !== null ? parseFloat(existingUser.balance) : 0;
+
     await supabase.from('users').upsert({
       telegram_id: userId,
       username: rawUsername,
-      verified_post_id: postId,
+      balance: currentBalance,
+      verified_post_id: targetPostId,
       is_verified: true
     }, { onConflict: 'telegram_id' });
   } catch (e) {
@@ -236,7 +244,7 @@ bot.on('message:dice', async (ctx) => {
   if (!ctx.message.dice || ctx.message.dice.emoji !== '🎰') return;
 
   const isComment = ctx.message.reply_to_message || ctx.message.is_topic_message;
-  const { postId } = getPostDetails(ctx);
+  const targetPostId = ctx.message.reply_to_message?.message_id ? ctx.message.reply_to_message.message_id.toString() : 'default';
   
   const replyOptions = { 
     parse_mode: 'HTML',
@@ -277,13 +285,14 @@ bot.on('message:dice', async (ctx) => {
       .eq('telegram_id', userId)
       .maybeSingle();
 
-    if (userRecord && userRecord.is_verified && userRecord.verified_post_id === postId) {
+    if (userRecord && userRecord.is_verified && userRecord.verified_post_id === targetPostId) {
       isVerifiedForThisPost = true;
     }
   } catch (e) {
     console.error("Check verification error:", e);
   }
 
+  // If not verified for this specific post, warn user and delete the spin message cleanly
   if (!isVerifiedForThisPost) {
     try {
       await ctx.api.deleteMessage(ctx.chat.id, ctx.message.message_id);
@@ -293,7 +302,7 @@ bot.on('message:dice', async (ctx) => {
 
     const postLink = getPostLink(ctx);
     const warningText = `⚠️ <b>Proof Verification Required!</b>\n\n` +
-      `Your spin was deleted because you are not verified for this new post! Please send a screenshot reply with reaction (❤️ / 👍) and caption <code>WORLD BEST CRYPTO</code> first!\n\n` +
+      `Your spin was deleted because you haven't verified for this new post yet! Please send a screenshot reply with reaction (❤️ / 👍) and caption <code>WORLD BEST CRYPTO</code> first!\n\n` +
       `🔗 <b>Target Post:</b> <a href="${postLink}">Click Here To View Post</a>`;
 
     const warningMsg = await ctx.reply(warningText, { 
@@ -307,6 +316,7 @@ bot.on('message:dice', async (ctx) => {
     return;
   }
 
+  // If verified for this post, process spin normally without deleting spin, accumulate exact reward safely
   const diceValue = ctx.message.dice.value;
   let replyText = '';
   const winCombination = getSlotResult(diceValue);
@@ -331,7 +341,7 @@ bot.on('message:dice', async (ctx) => {
       username: rawUsername,
       balance: newBalance,
       is_verified: true,
-      verified_post_id: postId
+      verified_post_id: targetPostId
     }, { onConflict: 'telegram_id' });
 
     if (winCombination) {

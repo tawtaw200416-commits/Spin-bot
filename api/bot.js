@@ -12,7 +12,7 @@ const bot = new Bot(BOT_TOKEN);
 // Sleep Helper Function
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-// Telegram Slot Machine ၏ 777 အပါအဝင် တရားဝင် ရလဒ်များအားလုံး တိကျစွာ တွက်ချက်သည့် Function
+// Telegram Slot Machine 777 Result Calculator
 const getSlotResult = (value) => {
   let v = value - 1;
   let r1 = v % 4;             
@@ -38,7 +38,7 @@ bot.catch((err) => {
   console.error('Error in bot:', err);
 });
 
-// Delay ဖြင့် Background မှာ Message ဖျက်ပေးမည့် Helper Function (၅ စက္ကန့်တိတိဖြင့် သတ်မှတ်ထားသည်)
+// Helper Function to Delete Messages After 5 Seconds (5000ms)
 const deleteMessageLater = (ctx, chatId, messageId, delay = 5000) => {
   const promise = (async () => {
     await sleep(delay);
@@ -88,7 +88,7 @@ bot.command('broadcast', async (ctx) => {
 
   const customMessage = ctx.match;
   if (!customMessage) {
-    return ctx.reply('⚠️ ကျေးဇူးပြု၍ ပို့လိုသော စာသားကို ထည့်ပါ။\n\n<b>ပုံစံ -</b> <code>/broadcast your_message_here</code>', { parse_mode: 'HTML' });
+    return ctx.reply('⚠️ Please provide the message to broadcast.\n\n<b>Format:</b> <code>/broadcast your_message_here</code>', { parse_mode: 'HTML' });
   }
 
   try {
@@ -97,10 +97,10 @@ bot.command('broadcast', async (ctx) => {
       .select('telegram_id');
 
     if (error || !users || users.length === 0) {
-      return ctx.reply('❌ Database မှ User စာရင်းများကို ဆွဲထုတ်၍ မရပါ (သို့) User မရှိပါ။');
+      return ctx.reply('❌ No users found in the database.');
     }
 
-    const statusMsg = await ctx.reply(`🚀 User ${users.length} ဦးထံသို့ စတင်ပို့ဆောင်နေပါပြီ...`);
+    const statusMsg = await ctx.reply(`🚀 Broadcasting to ${users.length} users...`);
 
     let successCount = 0;
     let failCount = 0;
@@ -121,18 +121,18 @@ bot.command('broadcast', async (ctx) => {
     await ctx.api.editMessageText(
       ctx.chat.id, 
       statusMsg.message_id, 
-      `✅ <b>Broadcast ပြီးစီးပါပြီ!</b>\n\n📤 ပို့ဆောင်နိုင်သူ - ${successCount} ဦး\n❌ မပို့နိုင်သူ - ${failCount} ဦး`, 
+      `✅ <b>Broadcast Completed!</b>\n\n📤 Sent: ${successCount}\n❌ Failed: ${failCount}`, 
       { parse_mode: 'HTML' }
     );
 
   } catch (err) {
     console.error("Broadcast Error:", err);
-    await ctx.reply('❌ Broadcast လုပ်ရာတွင် အမှားအယွင်း ရှိနေပါသည်။');
+    await ctx.reply('❌ An error occurred during broadcast.');
   }
 });
 
 // ==========================================
-// 4. Handle Photo (Comment ထဲတွင် ပုံဖြင့် Proof တင်စစ်ဆေးခြင်း)
+// 4. Handle Photo (Comment Proof Verification & Auto-Deletion)
 // ==========================================
 bot.on('message:photo', async (ctx) => {
   const isComment = ctx.message.reply_to_message || ctx.message.is_topic_message;
@@ -163,9 +163,9 @@ bot.on('message:photo', async (ctx) => {
                                   lowerCaption.includes('ကျပ်') ||
                                   lowerCaption.includes('ငွေလွှဲ');
 
-  // အကယ်၍ သက်ဆိုင်ရာ Post စာသား အပြည့်အစုံ မပါဝင်ပါက (သို့မဟုတ်) မှားယွင်းသောပုံ/ငွေလွှဲစလစ်ဖြစ်နေပါက
+  // If the post text doesn't contain the keyword or if it's an invalid image/receipt
   if (!hasCorrectPostText || isReceiptOrInvalidImage) {
-    // 1. User ပို့လိုက်သော မှားယွင်းသည့်ပုံကို ချက်ချင်းဖျက်မည်
+    // 1. Delete the user's invalid photo message immediately
     try {
       await ctx.api.deleteMessage(ctx.chat.id, ctx.message.message_id);
     } catch (e) {
@@ -175,7 +175,7 @@ bot.on('message:photo', async (ctx) => {
     const errorMsg = `❌ <b>Invalid Post Proof!</b>\n` +
       `The screenshot does not match the official post (${expectedKeyword}). Please upload a valid screenshot showing your reaction (❤️, 👍, or rec) on the correct post!`;
     
-    // 2. Bot ၏ သတိပေးစာကို ပို့ပြီး ၅ စက္ကန့် (5s) ကြာမှ ပြန်ဖျက်မည်
+    // 2. Send warning message and delete it after 5 seconds
     const sentErr = await ctx.reply(errorMsg, {
       parse_mode: 'HTML'
     });
@@ -183,7 +183,7 @@ bot.on('message:photo', async (ctx) => {
     return;
   }
 
-  // စာသားများ မှန်ကန်ပါက Verified လုပ်ပေးမည်
+  // If text is correct, verify the user
   try {
     await supabase.from('users').upsert({
       telegram_id: userId,
@@ -227,9 +227,9 @@ bot.on('message:dice', async (ctx) => {
       .eq('telegram_id', userId)
       .maybeSingle();
 
-    // Verified မဖြစ်သေးပါက
+    // If user is not verified
     if (!user || !user.is_verified) {
-      // 1. လှည့်ထားသော Spin (Dice) မက်ဆေ့ခ်ျကို ချက်ချင်းပြန်ဖျက်မည်
+      // 1. Delete the unverified spin dice message immediately
       try {
         await ctx.api.deleteMessage(ctx.chat.id, ctx.message.message_id);
       } catch (e) {
@@ -263,7 +263,7 @@ bot.on('message:dice', async (ctx) => {
       return; 
     }
 
-    // --- Verified ဖြစ်မှသာ Spin ရလဒ် တွက်ချက်မည် ---
+    // --- Process spin results if verified ---
     const diceValue = ctx.message.dice.value;
     let replyText = '';
     const winCombination = getSlotResult(diceValue);

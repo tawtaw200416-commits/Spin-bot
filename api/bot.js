@@ -12,6 +12,17 @@ const bot = new Bot(BOT_TOKEN);
 // Sleep Helper Function
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
+// Helper: Post ID / Thread ID ရယူခြင်း
+const getPostId = (ctx) => {
+  if (ctx.message?.message_thread_id) {
+    return ctx.message.message_thread_id;
+  }
+  if (ctx.message?.reply_to_message) {
+    return ctx.message.reply_to_message.message_thread_id || ctx.message.reply_to_message.message_id;
+  }
+  return ctx.chat.id;
+};
+
 // Slot Machine Result Calculation
 const getSlotResult = (value) => {
   let v = value - 1;
@@ -56,7 +67,7 @@ const deleteMessageLater = (ctx, chatId, messageId, delay = 5000) => {
   }
 };
 
-// Direct Message Deletion (Default 10s for Warning)
+// Direct Message Deletion (10s for Warning)
 const deleteMessageDirect = async (chatId, messageId, delay = 10000) => {
   await sleep(delay);
   try {
@@ -65,42 +76,6 @@ const deleteMessageDirect = async (chatId, messageId, delay = 10000) => {
     console.error(`Direct delete message failed for ${messageId}:`, e.message);
   }
 };
-
-// ==========================================
-// Auto-Sync User Reactions to Supabase DB
-// ==========================================
-bot.on('message_reaction', async (ctx) => {
-  try {
-    const reaction = ctx.messageReaction;
-    if (!reaction) return;
-
-    const userId = reaction.user?.id;
-    const chatId = reaction.chat.id;
-    const messageId = reaction.message_id;
-
-    if (!userId) return;
-
-    const newReactions = reaction.new_reaction || [];
-
-    // User ပေးလိုက်သော Reaction များထဲတွင် Heart/Like ပါမပါ စစ်ဆေးခြင်း
-    if (newReactions.length > 0) {
-      await supabase.from('reactions').upsert({
-        user_id: userId,
-        chat_id: chatId,
-        message_id: messageId,
-        created_at: new Date().toISOString()
-      }, { onConflict: 'user_id,chat_id,message_id' });
-    } else {
-      await supabase.from('reactions')
-        .delete()
-        .eq('user_id', userId)
-        .eq('chat_id', chatId)
-        .eq('message_id', messageId);
-    }
-  } catch (err) {
-    console.error('Error handling message_reaction event:', err);
-  }
-});
 
 // 1. /start Command
 bot.command('start', async (ctx) => {
@@ -125,77 +100,52 @@ bot.command('spin', async (ctx) => {
 // 3. Admin Broadcast Command
 bot.command('broadcast', async (ctx) => {
   const userId = ctx.from?.id;
-  
-  if (userId !== 1793453606) {
-    return ctx.reply('❌ This command is restricted.');
-  }
+  if (userId !== 1793453606) return ctx.reply('❌ This command is restricted.');
 
   const customMessage = ctx.match;
-
-  if (!customMessage) {
-    return ctx.reply('⚠️ Please provide a message.\n\n<b>Format:</b> <code>/broadcast your_message</code>', { parse_mode: 'HTML' });
-  }
+  if (!customMessage) return ctx.reply('⚠️ Please provide a message.\n\n<b>Format:</b> <code>/broadcast your_message</code>', { parse_mode: 'HTML' });
 
   try {
-    const { data: users, error } = await supabase
-      .from('users')
-      .select('telegram_id');
+    const { data: users } = await supabase.from('users').select('telegram_id');
+    if (!users || users.length === 0) return ctx.reply('❌ No users found in database.');
 
-    if (error || !users || users.length === 0) {
-      return ctx.reply('❌ No users found in database.');
-    }
-
-    const statusMsg = await ctx.reply(`🚀 Broadcasting to ${users.length} users...`);
-
-    let successCount = 0;
-    let failCount = 0;
-
+    let successCount = 0, failCount = 0;
     for (const user of users) {
       try {
-        await ctx.api.sendMessage(user.telegram_id, customMessage, {
-          parse_mode: 'HTML',
-          disable_web_page_preview: false
-        });
+        await ctx.api.sendMessage(user.telegram_id, customMessage, { parse_mode: 'HTML' });
         successCount++;
-        await sleep(50); 
+        await sleep(50);
       } catch (err) {
-        failCount++; 
+        failCount++;
       }
     }
-
-    await ctx.api.editMessageText(
-      ctx.chat.id, 
-      statusMsg.message_id, 
-      `✅ <b>Broadcast Completed!</b>\n\n📤 Successful: ${successCount}\n❌ Failed: ${failCount}`, 
-      { parse_mode: 'HTML' }
-    );
-
+    await ctx.reply(`✅ <b>Broadcast Completed!</b>\n\nSuccessful: ${successCount}\nFailed: ${failCount}`, { parse_mode: 'HTML' });
   } catch (err) {
-    console.error("Broadcast Error:", err);
-    await ctx.reply('❌ Error sending broadcast.');
+    console.error(err);
   }
 });
 
 // ==========================================
-// 4. Photo Proof Verification Handler
-// User မှ Reaction (❤️) ပေးထားသော Screenshot Photo ပို့ပါက စစ်ဆေးပေးမည်
+// 4. Photo Verification Handler (Post သီးသန့် မှတ်သားခြင်း)
 // ==========================================
 bot.on('message:photo', async (ctx) => {
   const isComment = ctx.message.reply_to_message || ctx.message.is_topic_message;
   if (!isComment) return;
 
   const userId = ctx.from.id;
+  const postId = getPostId(ctx);
   const rawUsername = ctx.from.username || ctx.from.first_name || `ID: ${userId}`;
   const displayName = ctx.from.username ? `@${ctx.from.username}` : rawUsername;
   const threadId = ctx.message.message_thread_id;
 
   try {
-    // ဓာတ်ပုံ ပို့လာပါက DB ထဲတွင် Reaction Screenshot စစ်ဆေးအတည်ပြုချက် မှတ်မည်
+    // သက်ဆိုင်ရာ Post ID အတွက် Photo Proof ကို Supabase DB တွင် မှတ်သားမည်
     await supabase.from('user_proofs').upsert({
       user_id: userId,
+      post_id: String(postId),
       has_photo_proof: true,
       updated_at: new Date().toISOString()
-    }, { onConflict: 'user_id' });
+    }, { onConflict: 'user_id,post_id' });
 
     const replyOptions = { 
       parse_mode: 'HTML',
@@ -205,7 +155,7 @@ bot.on('message:photo', async (ctx) => {
 
     const sentMsg = await ctx.reply(
       `❤️ <b>Heart Reaction Screenshot Received!</b>\n\n` +
-      `Thank you ${displayName}! Your reaction proof is verified. You can now send 🎰 to spin!`, 
+      `Thank you ${displayName}! Your reaction proof for this post is verified. You can now send 🎰 to spin!`, 
       replyOptions
     );
 
@@ -216,7 +166,7 @@ bot.on('message:photo', async (ctx) => {
 });
 
 // ==========================================
-// 5. Slot Machine Dice Handling & Reaction Verification
+// 5. Slot Machine Dice Handling & Post-Specific Proof Check
 // ==========================================
 bot.on('message:dice', async (ctx) => {
   if (!ctx.message.dice || ctx.message.dice.emoji !== '🎰') return;
@@ -226,6 +176,7 @@ bot.on('message:dice', async (ctx) => {
 
   const diceValue = ctx.message.dice.value;
   const userId = ctx.from.id;
+  const postId = getPostId(ctx);
   
   const rawUsername = ctx.from.username || ctx.from.first_name || `ID: ${userId}`;
   const displayName = ctx.from.username ? `@${ctx.from.username}` : rawUsername;
@@ -234,37 +185,30 @@ bot.on('message:dice', async (ctx) => {
   const replyMsg = ctx.message.reply_to_message;
 
   // ----------------------------------------------------
-  // Reaction (❤️) နှင့် Photo Proof ပို့ထားခြင်း ရှိမရှိ စစ်ဆေးခြင်း
+  // သက်ဆိုင်ရာ Post ID အောက်မှာ Photo Proof ပို့ထားခြင်း ရှိမရှိ စစ်ဆေးခြင်း
   // ----------------------------------------------------
-  let hasReacted = false;
+  let isVerified = false;
 
   try {
-    // 1. Direct Telegram Reaction DB စစ်ဆေးခြင်း
-    const { data: recData } = await supabase
-      .from('reactions')
-      .select('id')
-      .eq('user_id', userId)
-      .limit(1);
-
-    // 2. Photo Proof Screenshot DB စစ်ဆေးခြင်း
     const { data: proofData } = await supabase
       .from('user_proofs')
       .select('has_photo_proof')
       .eq('user_id', userId)
+      .eq('post_id', String(postId))
       .eq('has_photo_proof', true)
       .maybeSingle();
 
-    if ((recData && recData.length > 0) || (proofData && proofData.has_photo_proof)) {
-      hasReacted = true;
+    if (proofData && proofData.has_photo_proof) {
+      isVerified = true;
     }
   } catch (err) {
-    console.error("Reaction Verification Error:", err);
+    console.error("Proof DB Check Error:", err);
   }
 
   // ----------------------------------------------------
-  // A. IF USER HAS NOT GIVEN HEART REACTION OR SENT PHOTO PROOF
+  // A. IF USER HAS NOT VERIFIED FOR THIS POST (Access Denied)
   // ----------------------------------------------------
-  if (!hasReacted) {
+  if (!isVerified) {
     // Dice ကို ချက်ချင်း ဖျက်မည်
     try {
       await ctx.api.deleteMessage(ctx.chat.id, ctx.message.message_id);
@@ -273,47 +217,37 @@ bot.on('message:dice', async (ctx) => {
     }
 
     const finalPostId = threadId || (replyMsg ? replyMsg.message_id : ctx.message.message_id);
-    let postLink = '';
-    
     let channelUsername = replyMsg?.forward_from_chat?.username || ctx.chat.username;
-    if (channelUsername) {
-      postLink = `https://t.me/${channelUsername}/${finalPostId}`;
-    } else {
-      const cleanChatId = ctx.chat.id.toString().replace('-100', '');
-      postLink = `https://t.me/c/${cleanChatId}/${finalPostId}`;
-    }
+    let postLink = channelUsername 
+      ? `https://t.me/${channelUsername}/${finalPostId}`
+      : `https://t.me/c/${ctx.chat.id.toString().replace('-100', '')}/${finalPostId}`;
 
     const warningOptions = { 
       parse_mode: 'HTML',
       disable_web_page_preview: true
     };
+    if (threadId) warningOptions.message_thread_id = threadId;
+    if (replyMsg) warningOptions.reply_to_message_id = replyMsg.message_id;
 
-    if (threadId) {
-      warningOptions.message_thread_id = threadId;
-    }
-    if (replyMsg) {
-      warningOptions.reply_to_message_id = replyMsg.message_id;
-    }
-
-    // သတိပေးစာ ပို့မည် (လှည့်ခဲ့သည့် Comment Thread ထဲတွင်သာ ပို့မည်)
+    // သတိပေးစာ ပို့မည်
     const warningMsg = await ctx.reply(
       `⚠️ <b>Access Denied!</b>\n\n` +
-      `Hey ${displayName}, you must react (❤️ or 👍) to the post or reply with a <b>Screenshot Photo</b> before spinning!\n\n` +
+      `Hey ${displayName}, you must react (❤️ or 👍) to the post and reply with a <b>Screenshot Photo</b> in this exact thread before spinning!\n\n` +
       `👉 <a href="${postLink}">Click Here to View Post & React</a>`,
       warningOptions
     );
 
     // ၁၀ စက္ကန့်အကြာတွင် သတိပေးစာကို Auto ဖျက်မည်
-    await deleteMessageDirect(ctx.chat.id, warningMsg.message_id, 10000);
+    deleteMessageDirect(ctx.chat.id, warningMsg.message_id, 10000);
     return;
   }
 
   // ----------------------------------------------------
-  // B. IF USER HAS REACTED / VERIFIED (Calculate Result & Award Balance)
+  // B. IF USER IS VERIFIED (Consume Proof & Award Balance)
   // ----------------------------------------------------
-  // Spin ပြီးပါက Photo Proof status ကို Reset ပြန်လုပ်မည်
+  // လှည့်ပြီးပါက ထို Post အတွက် Verification ကို Reset ပြန်လုပ်မည်
   try {
-    await supabase.from('user_proofs').update({ has_photo_proof: false }).eq('user_id', userId);
+    await supabase.from('user_proofs').update({ has_photo_proof: false }).eq('user_id', userId).eq('post_id', String(postId));
   } catch (err) {
     console.error("Reset proof error:", err);
   }
@@ -330,11 +264,7 @@ bot.on('message:dice', async (ctx) => {
       .maybeSingle();
 
     let currentBalance = user && user.balance ? parseFloat(user.balance) : 0;
-    let newBalance = currentBalance;
-
-    if (reward > 0) {
-      newBalance = Math.round((currentBalance + reward) * 1000000) / 1000000;
-    }
+    let newBalance = reward > 0 ? Math.round((currentBalance + reward) * 1000000) / 1000000 : currentBalance;
 
     await supabase.from('users').upsert({
       telegram_id: userId,
@@ -348,36 +278,20 @@ bot.on('message:dice', async (ctx) => {
         `<blockquote><b>Balance = <code>${newBalance.toFixed(6)} 💎</code></b></blockquote>\n` +
         `<b>Mini Withdraw = 0.05 GRAM 💰 | Admin: @Rampage528 📢</b>`;
     } else {
-      replyText = `❌ <b>Try again ${displayName}! Better luck next time.</b>\n` +
+      replyText = `❌ <b>Better luck next time, ${displayName}!</b>\n` +
         `<blockquote><b>Balance = <code>${newBalance.toFixed(6)} 💎</code></b></blockquote>\n` +
         `<b>Mini Withdraw = 0.05 GRAM 💰 | Admin: @Rampage528 📢</b>`;
     }
   } catch (error) {
     console.error("Supabase Error:", error);
-    try {
-      let { data: user } = await supabase
-        .from('users')
-        .select('balance')
-        .eq('telegram_id', userId)
-        .maybeSingle();
-      let currentBalance = user && user.balance ? parseFloat(user.balance) : 0;
-      replyText = `❌ <b>Try again ${displayName}! Better luck next time.</b>\n` +
-        `<blockquote><b>Balance = <code>${currentBalance.toFixed(6)} 💎</code></b></blockquote>\n` +
-        `<b>Mini Withdraw = 0.05 GRAM 💰 | Admin: @Rampage528 📢</b>`;
-    } catch (e) {
-      replyText = `❌ <b>Try again ${displayName}! Better luck next time.</b>\n` +
-        `<b>Mini Withdraw = 0.05 GRAM 💰 | Admin: @Rampage528 📢</b>`;
-    }
+    replyText = `❌ <b>Better luck next time, ${displayName}!</b>`;
   }
 
   const replyOptions = { 
     parse_mode: 'HTML',
     reply_to_message_id: ctx.message.message_id
   };
-  
-  if (threadId) {
-    replyOptions.message_thread_id = threadId;
-  }
+  if (threadId) replyOptions.message_thread_id = threadId;
 
   const sentMsg = await ctx.reply(replyText, replyOptions);
   deleteMessageLater(ctx, ctx.chat.id, sentMsg.message_id, 5000);
@@ -416,9 +330,9 @@ module.exports = async (req, res, context) => {
       const webhookUrl = `https://${host}/api/index`; 
       
       await bot.api.setWebhook(webhookUrl, {
-        allowed_updates: ["message", "edited_message", "channel_post", "edited_channel_post", "message_reaction", "message_reaction_count"]
+        allowed_updates: ["message", "edited_message", "channel_post", "edited_channel_post"]
       });
-      return res.status(200).send('Webhook configured successfully with reaction updates!');
+      return res.status(200).send('Webhook configured successfully!');
     } catch (e) {
       return res.status(200).send('Status: Active!');
     }

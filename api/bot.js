@@ -72,21 +72,13 @@ const isCommentSection = (ctx) => {
   return isReply || isTopic || isAutoForward;
 };
 
-// Reliable Helper to get Target Main Post ID from Reply context (ပိုမိုတိကျစေရန် ပြင်ဆင်ထားသည်)
-const getReliablePostId = (ctx) => {
+// Reliable Helper to get Target Main Post ID from Reply context
+const getTargetPostId = (ctx) => {
   const replyTo = ctx.message?.reply_to_message;
   if (replyTo) {
-    if (replyTo.forward_from_message_id) {
-      return String(replyTo.forward_from_message_id);
-    }
-    if (replyTo.message_id) {
-      return String(replyTo.message_id);
-    }
+    return replyTo.forward_from_message_id || replyTo.message_id || replyTo.reply_to_message?.message_id || null;
   }
-  if (ctx.message?.message_thread_id) {
-    return String(ctx.message.message_thread_id);
-  }
-  return 'active';
+  return ctx.message?.message_thread_id || null;
 };
 
 const getPostLink = (ctx) => {
@@ -193,7 +185,7 @@ bot.command('broadcast', async (ctx) => {
     await ctx.api.editMessageText(
       ctx.chat.id, 
       statusMsg.message_id, 
-      `✅ <b>Broadcast Completed!</b>\n\n📤 Success - ${successCount}\n❌ Failed - ${failCount}`, 
+      `✅ <b>Broadcast Completed!</b>\n\n📤 Success - Success - ${successCount}\n❌ Failed - ${failCount}`, 
       { parse_mode: 'HTML' }
     );
     deleteMessageLater(ctx, ctx.chat.id, statusMsg.message_id, 5000);
@@ -205,7 +197,7 @@ bot.command('broadcast', async (ctx) => {
   }
 });
 
-// 4. Photo Verification Handling (User ID ကို အတိအကျသိမ်းဆည်းခြင်း)
+// 4. Photo Verification Handling
 bot.on('message:photo', async (ctx) => {
   if (!isCommentSection(ctx)) return;
 
@@ -213,7 +205,8 @@ bot.on('message:photo', async (ctx) => {
   const rawUsername = ctx.from.username || ctx.from.first_name || `ID: ${userId}`;
   const displayName = ctx.from.username ? `@${ctx.from.username}` : rawUsername;
   
-  const targetPostIdStr = getReliablePostId(ctx);
+  const targetPostId = getTargetPostId(ctx);
+  const targetPostIdStr = targetPostId ? String(targetPostId) : 'active';
   const postLink = getPostLink(ctx);
 
   const photoCaption = ctx.message.caption || '';
@@ -248,23 +241,18 @@ bot.on('message:photo', async (ctx) => {
 
     const currentBalance = existingUser && existingUser.balance !== null ? parseFloat(existingUser.balance) : 0;
 
-    // Database တွင် telegram_id ကို Primary/Unique အနေဖြင့် verified_post_id နှင့်တကွ အတိအကျ သိမ်းဆည်းမည်
-    const { error: upsertErr } = await supabase.from('users').upsert({
+    // Database တွင် သက်ဆိုင်ရာ post ID နှင့်တကွ အတိအကျ သိမ်းဆည်းမည်
+    await supabase.from('users').upsert({
       telegram_id: userId,
       username: rawUsername,
       balance: currentBalance,
       verified_post_id: targetPostIdStr,
       is_verified: true
     }, { onConflict: 'telegram_id' });
-
-    if (upsertErr) {
-      console.error("Supabase upsert error in photo:", upsertErr);
-    }
   } catch (e) {
     console.error("Supabase verification save error:", e);
   }
 
-  // Verify အောင်မြင်ကြောင်းစာသား
   const successMsg = await ctx.reply(
     `✅ <b>Complete Verified User: ${displayName}!</b>\n` +
     `Your screenshot is successfully verified. You can now spin freely in this post thread without restriction! 🎰`,
@@ -278,7 +266,7 @@ bot.on('message:photo', async (ctx) => {
   deleteMessageLater(ctx, ctx.chat.id, successMsg.message_id, 5000);
 });
 
-// 5. Slot Machine Dice Handling (မှတ်သားထားသော post ထဲတွင် မပျက်စေဘဲ ဆက်လက်လှည့်ခွင့်ပြုခြင်း)
+// 5. Slot Machine Dice Handling
 bot.on('message:dice', async (ctx) => {
   if (!ctx.message.dice || ctx.message.dice.emoji !== '🎰') return;
   if (!isCommentSection(ctx)) return;
@@ -287,19 +275,20 @@ bot.on('message:dice', async (ctx) => {
   const rawUsername = ctx.from.username || ctx.from.first_name || `ID: ${userId}`;
   const displayName = ctx.from.username ? `@${ctx.from.username}` : rawUsername;
 
-  const currentSpinPostIdStr = getReliablePostId(ctx);
+  const currentSpinPostId = getTargetPostId(ctx);
+  const currentSpinPostIdStr = currentSpinPostId ? String(currentSpinPostId) : 'active';
 
   let isVerifiedForThisPost = false;
 
   try {
-    const { data: userRecord, error: fetchErr } = await supabase
+    const { data: userRecord } = await supabase
       .from('users')
       .select('is_verified, verified_post_id, balance')
       .eq('telegram_id', userId)
       .maybeSingle();
 
-    if (!fetchErr && userRecord && userRecord.is_verified === true) {
-      // Post ID ကိုက်ညီပါက သို့မဟုတ် active ဖြစ်နေပါက spin လှည့်ခွင့်ပေးမည်
+    // Verify ပြီးသားဖြစ်ပြီး Post ID တူညီနေပါက (သို့မဟုတ် post အဟောင်းဖြစ်နေလျှင်) မဖျက်ဘဲ လှည့်ခွင့်ပြုမည်
+    if (userRecord && userRecord.is_verified === true) {
       if (!userRecord.verified_post_id || userRecord.verified_post_id === currentSpinPostIdStr || currentSpinPostIdStr === 'active' || userRecord.verified_post_id === 'active') {
         isVerifiedForThisPost = true;
       }
@@ -308,7 +297,7 @@ bot.on('message:dice', async (ctx) => {
     console.error("Check verification error:", e);
   }
 
-  // မ verify ရသေးလျှင် သို့မဟုတ် Post အသစ်ပြောင်းသွားမှသာ spin ကိုဖျက်ပြီး ပုံပို့ရန် တောင်းဆိုမည်
+  // Post အသစ်အစစ်အမှန် ပြောင်းသွားမှသာ မူလ spin ကိုဖျက်ပြီး ပုံပြန်တောင်းမည်
   if (!isVerifiedForThisPost) {
     try {
       await ctx.api.deleteMessage(ctx.chat.id, ctx.message.message_id);
@@ -332,7 +321,7 @@ bot.on('message:dice', async (ctx) => {
     return;
   }
 
-  // Verify ပြီးသားဖြစ်ပါက spin ကို မဖျက်ဘဲ ဆက်လက်ကစားခွင့်ပေးမည်
+  // Verify ပြီးသား user အတွက် spin ဆက်လက်ကစားခွင့်ပေးပြီး verified_post_id ကိုပါ Update လုပ်ပေးမည်
   const diceValue = ctx.message.dice.value;
   let replyText = '';
   const winCombination = getSlotResult(diceValue);

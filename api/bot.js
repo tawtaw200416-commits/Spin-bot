@@ -211,7 +211,6 @@ bot.on('message:photo', async (ctx) => {
   const isValidCaption = photoCaption.includes('@Rampage528') || photoCaption.includes('game link');
 
   if (!isValidCaption) {
-    // Delete the unverified photo message immediately
     try {
       await ctx.api.deleteMessage(ctx.chat.id, ctx.message.message_id);
     } catch (e) {

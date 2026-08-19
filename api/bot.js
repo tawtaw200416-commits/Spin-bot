@@ -1,4 +1,4 @@
-const { Bot, webhookCallback } = require('grammy');
+Const { Bot, webhookCallback } = require('grammy');
 const { createClient } = require('@supabase/supabase-js');
 
 // Supabase Configuration
@@ -200,7 +200,7 @@ bot.command('broadcast', async (ctx) => {
   }
 });
 
-// 4. Photo Verification Handling (ပုံများကို လုံးဝမဖျက်ဘဲ Comment Section မဟုတ်ရင် လစ်လျူရှုမည်)
+// 4. Photo Verification Handling
 bot.on('message:photo', async (ctx) => {
   if (!isCommentSection(ctx)) return;
 
@@ -215,7 +215,10 @@ bot.on('message:photo', async (ctx) => {
   const isValidCaption = photoCaption.includes('@Rampage528') || photoCaption.includes('game link');
 
   if (!isValidCaption) {
-    // ပုံကို မဖျက်တော့ပါ (deleteMessage ကုဒ်ကို ဖြုတ်ထားပါပြီ)
+    try {
+      await ctx.api.deleteMessage(ctx.chat.id, ctx.message.message_id);
+    } catch (e) {}
+
     const errorMsg = await ctx.reply(
       `❌ <b>Invalid Verification!</b>\n` +
       `Your screenshot was rejected because the caption is incorrect! Please include caption <code>@Rampage528</code> and reaction (❤️ / 👍).\n\n` +

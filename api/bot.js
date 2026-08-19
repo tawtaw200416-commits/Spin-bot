@@ -23,10 +23,10 @@ const getSlotResult = (value) => {
   let r3 = Math.floor(v / 16) % 4;
 
   const symbols = {
-    0: { name: '🏷️ BAR BAR BAR', reward: 0.00150 },    // BAR = 0.00150 GRAM
-    1: { name: '🍇 🍇 🍇',       reward: 0.00030 },   // Grape = 0.00030 GRAM
-    2: { name: '🍋 🍋 🍋',       reward: 0.00050 },   // Lemon = 0.00050 GRAM
-    3: { name: '7️⃣ 7️⃣ 7️⃣ (Jackpot)', reward: 0.00700 } // 777 = 0.00700 GRAM
+    0: { name: '🏷️ BAR BAR BAR', reward: 0.0050 },    // BAR = 0.0050 GRAM
+    1: { name: '🍇 🍇 🍇',       reward: 0.00050 },   // Grape = 0.00050 GRAM
+    2: { name: '🍋 🍋 🍋',       reward: 0.0010 },   // Lemon = 0.0010 GRAM
+    3: { name: '7️⃣ 7️⃣ 7️⃣ (Jackpot)', reward: 0.0100 } // 777 = 0.0100 GRAM
   };
 
   if (r1 === r2 && r2 === r3) {
@@ -265,7 +265,7 @@ bot.on('message:photo', async (ctx) => {
   deleteMessageLater(ctx, ctx.chat.id, successMsg.message_id, 2000);
 });
 
-// 5. Slot Machine Dice Handling (Verification + Group Slow Mode Dynamic Cooldown Check)
+// 5. Slot Machine Dice Handling (Verification + Custom Cooldown Check)
 bot.on('message:dice', async (ctx) => {
   if (!ctx.message.dice || ctx.message.dice.emoji !== '🎰') return;
   if (!isCommentSection(ctx)) return;
@@ -274,16 +274,8 @@ bot.on('message:dice', async (ctx) => {
   const rawUsername = ctx.from.username || ctx.from.first_name || `ID: ${userId}`;
   const displayName = ctx.from.username ? `@${ctx.from.username}` : rawUsername;
 
-  // Automatically fetch slow mode delay from group settings (defaults to 5 seconds if not set)
-  let slowModeSeconds = 5;
-  try {
-    const chatInfo = await ctx.getChat();
-    if (chatInfo && chatInfo.slow_mode_delay) {
-      slowModeSeconds = chatInfo.slow_mode_delay;
-    }
-  } catch (err) {
-    console.error("Failed to fetch chat slow mode:", err);
-  }
+  // ⏱️ ကိုယ်ပိုင် သတ်မှတ်လိုသည့် အချိန် (စက္ကန့်) - လိုသလို ဒီနေရာမှာ ပြင်နိုင်ပါတယ် (ဥပမာ - 2 သို့မဟုတ် 3 စက္ကန့်)
+  const slowModeSeconds = 20; 
 
   // Cooldown Verification Check
   const now = Date.now();

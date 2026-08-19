@@ -1,4 +1,4 @@
-const { Bot, webhookCallback } = require('grammy');
+Const { Bot, webhookCallback } = require('grammy');
 const { createClient } = require('@supabase/supabase-js');
 
 // Supabase Configuration
@@ -9,13 +9,13 @@ const BOT_TOKEN = process.env.BOT_TOKEN || '8566391789:AAHxMWzB5EERqVAHI7Uf7rQod
 const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 const bot = new Bot(BOT_TOKEN);
 
-// Cooldown Map (Track user's last spin timestamp)
+// Cooldown Map (User ၏ နောက်ဆုံးလှည့်ခဲ့သည့် အချိန်ကို မှတ်ရန်)
 const spinCooldowns = new Map();
 
 // Sleep Helper Function
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-// Telegram Slot Machine accurate result calculation including 777
+// Telegram Slot Machine ၏ 777 အပါအဝင် တရားဝင် ရလဒ်များအားလုံး တိကျစွာ တွက်ချက်သည့် Function
 const getSlotResult = (value) => {
   let v = value - 1;
   let r1 = v % 4;             
@@ -63,21 +63,25 @@ const deleteMessageLater = (ctx, chatId, messageId, delay = 2000) => {
   }
 };
 
-// Helper to check if message is inside group chat (Allows regular group posts without requiring a reply)
+// Helper to check if the message is strictly inside a channel linked discussion group / supergroup comment thread
 const isCommentSection = (ctx) => {
   const msg = ctx.message;
   if (!msg) return false;
   
-  return ctx.chat?.type === 'supergroup' || ctx.chat?.type === 'group';
+  const isReply = !!msg.reply_to_message;
+  const isTopic = !!msg.is_topic_message;
+  const isAutoForward = !!msg.is_automatic_forward;
+
+  return isReply || isTopic || isAutoForward;
 };
 
-// Target Post ID Extraction Helper
+// Target Post ID ထုတ်ယူမည့် Helper
 const getTargetPostId = (ctx) => {
   const replyTo = ctx.message?.reply_to_message;
   if (replyTo) {
     return String(replyTo.forward_from_message_id || replyTo.message_id || 'general');
   }
-  return String(ctx.message?.message_thread_id || ctx.chat?.id || 'general');
+  return String(ctx.message?.message_thread_id || 'general');
 };
 
 const getPostLink = (ctx) => {
@@ -122,7 +126,7 @@ bot.command('spin', async (ctx) => {
 
   const postLink = getPostLink(ctx);
   const promptText = `⚠️ <b>Proof Verification Required!</b>\n\n` +
-    `Please send a screenshot with reaction (❤️ / 👍) given to the post and caption <code>@Rampage528</code> in the group!\n\n` +
+    `Please send a screenshot with reaction (❤️ / 👍) given to the post and caption <code>@Rampage528</code> by replying directly to that post!\n\n` +
     `🔗 <b>Target Post:</b> <a href="${postLink}">Click Here To View Post</a>`;
 
   const sent = await ctx.reply(promptText, { 
@@ -147,7 +151,7 @@ bot.command('broadcast', async (ctx) => {
   const customMessage = ctx.match;
 
   if (!customMessage) {
-    const sent = await ctx.reply('⚠️ Please provide a message to broadcast.\n\n<b>Format:</b> <code>/broadcast your_message_here</code>', { parse_mode: 'HTML' });
+    const sent = await ctx.reply('⚠️ ကျေးဇူးပြု၍ ပို့လိုသော စာသားကို ထည့်ပါ။\n\n<b>ပုံစံ -</b> <code>/broadcast your_message_here</code>', { parse_mode: 'HTML' });
     deleteMessageLater(ctx, ctx.chat.id, sent.message_id, 2000);
     return;
   }
@@ -158,12 +162,12 @@ bot.command('broadcast', async (ctx) => {
       .select('telegram_id');
 
     if (error || !users || users.length === 0) {
-      const sent = await ctx.reply('❌ Failed to retrieve user list from database or no users found.');
+      const sent = await ctx.reply('❌ Database မှ User စာရင်းများကို ဆွဲထုတ်၍ မရပါ (သို့) User မရှိပါ။');
       deleteMessageLater(ctx, ctx.chat.id, sent.message_id, 2000);
       return;
     }
 
-    const statusMsg = await ctx.reply(`🚀 Starting broadcast to ${users.length} users...`);
+    const statusMsg = await ctx.reply(`🚀 User ${users.length} ဦးထံသို့ စတင်ပို့ဆောင်နေပါပြီ...`);
 
     let successCount = 0;
     let failCount = 0;
@@ -184,19 +188,19 @@ bot.command('broadcast', async (ctx) => {
     await ctx.api.editMessageText(
       ctx.chat.id, 
       statusMsg.message_id, 
-      `✅ <b>Broadcast Completed!</b>\n\n📤 Successfully Sent - ${successCount}\n❌ Failed - ${failCount}`, 
+      `✅ <b>Broadcast ပြီးစီးပါပြီ!</b>\n\n📤 ပို့ဆောင်နိုင်သူ - ${successCount} ဦး\n❌ မပို့နိုင်သူ - ${failCount} ဦး`, 
       { parse_mode: 'HTML' }
     );
     deleteMessageLater(ctx, ctx.chat.id, statusMsg.message_id, 2000);
 
   } catch (err) {
     console.error("Broadcast Error:", err);
-    const sent = await ctx.reply('❌ An error occurred during broadcast execution.');
+    const sent = await ctx.reply('❌ Broadcast လုပ်ရာတွင် အမှားအယွင်း ရှိနေပါသည်။');
     deleteMessageLater(ctx, ctx.chat.id, sent.message_id, 2000);
   }
 });
 
-// 4. Photo Verification Handling (Never deletes user photos, ignores non-group photos)
+// 4. Photo Verification Handling
 bot.on('message:photo', async (ctx) => {
   if (!isCommentSection(ctx)) return;
 
@@ -211,7 +215,10 @@ bot.on('message:photo', async (ctx) => {
   const isValidCaption = photoCaption.includes('@Rampage528') || photoCaption.includes('game link');
 
   if (!isValidCaption) {
-    // Photos are intentionally NOT deleted here
+    try {
+      await ctx.api.deleteMessage(ctx.chat.id, ctx.message.message_id);
+    } catch (e) {}
+
     const errorMsg = await ctx.reply(
       `❌ <b>Invalid Verification!</b>\n` +
       `Your screenshot was rejected because the caption is incorrect! Please include caption <code>@Rampage528</code> and reaction (❤️ / 👍).\n\n` +
@@ -249,7 +256,7 @@ bot.on('message:photo', async (ctx) => {
 
   const successMsg = await ctx.reply(
     `✅ <b>Complete Verified User: ${displayName}!</b>\n` +
-    `Your screenshot is successfully verified. You can now spin freely here! 🎰`,
+    `Your screenshot is successfully verified for this post. You can now spin freely here! 🎰`,
     { 
       parse_mode: 'HTML',
       reply_to_message_id: ctx.message.reply_to_message ? ctx.message.reply_to_message.message_id : undefined,
@@ -269,7 +276,7 @@ bot.on('message:dice', async (ctx) => {
   const rawUsername = ctx.from.username || ctx.from.first_name || `ID: ${userId}`;
   const displayName = ctx.from.username ? `@${ctx.from.username}` : rawUsername;
 
-  // Automatically fetch slow mode delay from group settings (defaults to 5 seconds if not set)
+  // Group setting ထဲမှ Slow Mode အချိန်ကို အလိုအလျောက် ယူမည် (အကယ်၍ Group တွင် Slow Mode မရှိပါက ပုံသေ 5 စက္ကန့် သုံးမည်)
   let slowModeSeconds = 5;
   try {
     const chatInfo = await ctx.getChat();
@@ -280,10 +287,10 @@ bot.on('message:dice', async (ctx) => {
     console.error("Failed to fetch chat slow mode:", err);
   }
 
-  // Cooldown Verification Check
+  // Cooldown စစ်ဆေးခြင်း
   const now = Date.now();
   const lastSpinTime = spinCooldowns.get(userId) || 0;
-  const cooldownTime = slowModeSeconds * 1000; // Convert seconds to milliseconds
+  const cooldownTime = slowModeSeconds * 1000; // စက္ကန့်ကို မီလီစက္ကန့်ပြောင်းခြင်း
 
   if (now - lastSpinTime < cooldownTime) {
     const remainingSeconds = Math.ceil((cooldownTime - (now - lastSpinTime)) / 1000);
@@ -304,7 +311,7 @@ bot.on('message:dice', async (ctx) => {
     return;
   }
 
-  // Record current spin timestamp
+  // ယခုလှည့်သည့် အချိန်ကို မှတ်တမ်းတင်မည်
   spinCooldowns.set(userId, now);
 
   const currentSpinPostId = getTargetPostId(ctx);
@@ -333,7 +340,7 @@ bot.on('message:dice', async (ctx) => {
 
     const postLink = getPostLink(ctx);
     const warningText = `⚠️ <b>Proof Verification Required!</b>\n\n` +
-      `Your spin was deleted because you haven't verified yet! Please send a screenshot with reaction (❤️ / 👍) and caption <code>@Rampage528</code> first!\n\n` +
+      `Your spin was deleted because you haven't verified for this specific post yet! Please send a screenshot reply with reaction (❤️ / 👍) and caption <code>WORLD BEST CRYPTO</code> first!\n\n` +
       `🔗 <b>Target Post:</b> <a href="${postLink}">Click Here To View Post</a>`;
 
     const warningMsg = await ctx.reply(warningText, { 
@@ -439,6 +446,8 @@ module.exports = async (req, res, context) => {
     } catch (err) {
       console.error("Webhook processing error:", err);
       return res.status(200).send('OK');
+
+Spin လှည့်တဲ့ပီး 10sစောင့်ခိုင်းတဲ့စာကြောင်းပြပါ
     }
   }
 

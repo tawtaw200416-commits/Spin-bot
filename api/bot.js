@@ -64,9 +64,9 @@ const deleteMessageLater = (ctx, chatId, messageId, delay = 2000) => {
 };
 
 /**
- * တိကျသော Comment Section စစ်ဆေးချက် (Group Chat ထဲက လာပို့တာတွေကို လုံးဝ Filter လုပ်ထုတ်မည်)
- * - Channel ၏ Linked Discussion (သို့မဟုတ် Post တစ်ခုကို Reply ပေးထားသော Comment) ဖြစ်မှသာ true ပေးမည်။
- * - ပင်မ Group Chat ထဲတွင် အလကားလာပို့သော Spin / Photo များကို false ပေးပြီး Bot က လုံးဝ လစ်လျူရှုမည်။
+ * တိကျသော Comment Section (Linked Discussion) စစ်ဆေးချက်
+ * - ပင်မ Group Chat ထဲက ပို့စ်များကို လုံးဝ (လုံးဝ) လစ်လျူရှုမည်။
+ * - Channel မှ အလိုအလျောက်ချိတ်ဆက်ပေးထားသော Discussion Group (သို့မဟုတ် Channel Post ကို တိုက်ရိုက် Reply ပေးထားသည့် Comment) များတွင်သာ အလုပ်လုပ်မည်။
  */
 const isCommentSection = (ctx) => {
   const msg = ctx.message;
@@ -81,20 +81,21 @@ const isCommentSection = (ctx) => {
 
   const replyTo = msg.reply_to_message;
   
-  // အရေးကြီးချက် - Channel တစ်ခုခုမှ တိုက်ရိုက် Auto-Forward ဖြစ်လာသော Post (သို့) Channel ၏ Post ကို Reply ပေးထားခြင်း ဖြစ်ရပါမည်။
-  // ပင်မ Group Chat ထဲတွင် ပို့သော မက်ဆေ့ခ်ျများတွင် reply_to_message မပါခြင်း (သို့မဟုတ်) ပါလျှင်တောင် forward_from_chat သို့မဟုတ် original channel post မဟုတ်ခြင်းတို့ ရှိတတ်သည်။
+  // Telegram ၏ Linked Discussion များတွင် Comment အဖြစ် ဝင်လာသော မက်ဆေ့ခ်ျများတွင် 
+  // 1. reply_to_message ပါရှိပြီး ထို reply ပေးထားသည့် မက်ဆေ့ခ်ျသည် Channel ကနေ Auto-Forward ဖြစ်လာခြင်း (သို့မဟုတ်) 
+  // 2. is_automatic_forward ဖြစ်နေခြင်း (သို့မဟုတ်) 
+  // 3. message_thread_id ပါရှိခြင်း တို့ ရှိတတ်ပါသည်။
   if (replyTo) {
-    // Reply ပေးထားတဲ့ မက်ဆေ့ခ်ျဟာ Channel ကနေ လာတာဖြစ်ရမယ် (သို့) forward ဖြစ်လာတဲ့ဟာ ဖြစ်ရမယ်
-    const isForwardedFromChannel = !!replyTo.forward_from_chat || !!replyTo.forward_from || !!replyTo.author_signature;
-    const isTopicRoot = !!msg.message_thread_id;
-    
-    // အကယ်၍ Reply ပေးထားတဲ့အရာက Channel Post သို့မဟုတ် Linked Discussion ဖြစ်နေလျှင် အလုပ်လုပ်မည်
-    if (isForwardedFromChannel || isTopicRoot || replyTo.from?.is_bot) {
+    const isAutoForward = replyTo.is_automatic_forward === true;
+    const hasForwardChat = !!replyTo.forward_from_chat;
+    const isTopicThread = !!msg.message_thread_id;
+
+    // ပင်မ Group ထဲက အလကားလာပို့သော reply များမဟုတ်ဘဲ Channel Post ၏ Comment သို့မဟုတ် Topic ဖြစ်မှသာ လက်ခံမည်
+    if (isAutoForward || hasForwardChat || isTopicThread) {
       return true;
     }
   }
 
-  // အထက်ပါ အခြေအနေများ မပြည့်စုံလျှင် ပင်မ Group ထဲက ပုံမှန်စာ/ပုံ/spin အဖြစ် သတ်မှတ်ပြီး လစ်လျူရှုမည်။
   return false;
 };
 

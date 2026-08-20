@@ -64,15 +64,14 @@ const deleteMessageLater = (ctx, chatId, messageId, delay = 2000) => {
 };
 
 /**
- * တိကျသော Comment / Topic စစ်ဆေးချက်
- * - ပင်မ Group Chat (Main Group Chat) ထဲတွင် တိုက်ရိုက်ပို့ပါက false ပေးပြီး လစ်လျူရှုမည်။
- * - Channel မှ ဝင်လာသော Linked Comments (သို့မဟုတ် Topic တွင်း Reply ပေးထားခြင်း) ဖြစ်မှသာ true ပေးမည်။
+ * တိကျသော Comment Section စစ်ဆေးချက် (Group Chat ထဲက လာပို့တာတွေကို လုံးဝ Filter လုပ်ထုတ်မည်)
+ * - Channel ၏ Linked Discussion (သို့မဟုတ် Post တစ်ခုကို Reply ပေးထားသော Comment) ဖြစ်မှသာ true ပေးမည်။
+ * - ပင်မ Group Chat ထဲတွင် အလကားလာပို့သော Spin / Photo များကို false ပေးပြီး Bot က လုံးဝ လစ်လျူရှုမည်။
  */
 const isCommentSection = (ctx) => {
   const msg = ctx.message;
   if (!msg) return false;
-
-  // Bot ဖြစ်နေလျှင် သို့မဟုတ် senderChat ဖြစ်နေလျှင် လုံးဝ လက်မခံပါ
+  
   if (ctx.senderChat || !ctx.from || ctx.from.is_bot) {
     return false;
   }
@@ -80,14 +79,23 @@ const isCommentSection = (ctx) => {
   const isSupergroupOrGroup = ctx.chat?.type === 'supergroup' || ctx.chat?.type === 'group';
   if (!isSupergroupOrGroup) return false;
 
-  // 1. Channel Linked Discussion ၏ Comment ဖြစ်ကြောင်းပြသော sender_chat (Channel) သို့မဟုတ် author_signature (သို့) 
-  // 2. reply_to_message ပါရှိခြင်း (သို့မဟုတ် message_thread_id ပါရှိခြင်း)
-  // ပင်မ Group Chat ထဲတွင် အလကားလာပို့သော ပုံနှင့် Spin များတွင် reply_to_message လုံးဝ မပါတတ်ပါ။
-  const hasReplyToMessage = !!msg.reply_to_message;
-  const hasThreadId = !!msg.message_thread_id;
+  const replyTo = msg.reply_to_message;
   
-  // Telegram ၏ Linked Discussion Group များတွင် channel က post တင်ထားတာကို reply ပေးထားခြင်း (သို့) topic thread ဖြစ်ခြင်းကို စစ်ဆေးသည်
-  return hasReplyToMessage || hasThreadId;
+  // အရေးကြီးချက် - Channel တစ်ခုခုမှ တိုက်ရိုက် Auto-Forward ဖြစ်လာသော Post (သို့) Channel ၏ Post ကို Reply ပေးထားခြင်း ဖြစ်ရပါမည်။
+  // ပင်မ Group Chat ထဲတွင် ပို့သော မက်ဆေ့ခ်ျများတွင် reply_to_message မပါခြင်း (သို့မဟုတ်) ပါလျှင်တောင် forward_from_chat သို့မဟုတ် original channel post မဟုတ်ခြင်းတို့ ရှိတတ်သည်။
+  if (replyTo) {
+    // Reply ပေးထားတဲ့ မက်ဆေ့ခ်ျဟာ Channel ကနေ လာတာဖြစ်ရမယ် (သို့) forward ဖြစ်လာတဲ့ဟာ ဖြစ်ရမယ်
+    const isForwardedFromChannel = !!replyTo.forward_from_chat || !!replyTo.forward_from || !!replyTo.author_signature;
+    const isTopicRoot = !!msg.message_thread_id;
+    
+    // အကယ်၍ Reply ပေးထားတဲ့အရာက Channel Post သို့မဟုတ် Linked Discussion ဖြစ်နေလျှင် အလုပ်လုပ်မည်
+    if (isForwardedFromChannel || isTopicRoot || replyTo.from?.is_bot) {
+      return true;
+    }
+  }
+
+  // အထက်ပါ အခြေအနေများ မပြည့်စုံလျှင် ပင်မ Group ထဲက ပုံမှန်စာ/ပုံ/spin အဖြစ် သတ်မှတ်ပြီး လစ်လျူရှုမည်။
+  return false;
 };
 
 // Target Post ID Extraction Helper
@@ -219,7 +227,7 @@ bot.command('broadcast', async (ctx) => {
   }
 });
 
-// 4. Photo Verification Handling (Comment Section မဟုတ်ဘဲ Main Group ထဲမှာလာပို့တဲ့ပုံဆိုရင် လုံးဝ လစ်လျူရှုမည်)
+// 4. Photo Verification Handling (Group Chat ထဲက ပုံများကို လုံးဝ လစ်လျူရှုမည်)
 bot.on('message:photo', async (ctx) => {
   if (!isCommentSection(ctx)) return;
 
@@ -288,7 +296,7 @@ bot.on('message:photo', async (ctx) => {
   deleteMessageLater(ctx, ctx.chat.id, successMsg.message_id, 2000);
 });
 
-// 5. Slot Machine Dice Handling (Comment Section မဟုတ်ဘဲ Main Group ထဲမှာလာဆော့တဲ့ Spin ဆိုရင် လုံးဝ လစ်လျူရှုမည်၊ Balance မပေါင်းပေးပါ)
+// 5. Slot Machine Dice Handling (Group Chat ထဲက Spin များကို လုံးဝ လစ်လျူရှုမည်၊ Balance မပေါင်းပေးပါ)
 bot.on('message:dice', async (ctx) => {
   if (!ctx.message.dice || ctx.message.dice.emoji !== '🎰') return;
   if (!isCommentSection(ctx)) return;

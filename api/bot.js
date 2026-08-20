@@ -66,7 +66,7 @@ const deleteMessageLater = (ctx, chatId, messageId, delay = 2000) => {
 /**
  * 🎯 တိကျသော Comment Section (Linked Discussion) စစ်ဆေးချက်
  * - Group Chat ထဲတွင် အလကားလာပို့သော Spin/Photo များကို လုံးဝ လစ်လျူရှုမည် (false ပေးမည်)။
- * - Channel မှ လာသော Post (သို့မဟုတ်) Linked Discussion / Comments များတွင် Reply ပေးထားမှသာ true ပေးမည်။
+ * - Channel မှ လာသော Post သို့မဟုတ် Linked Discussion / Comments ထဲတွင် ဝင်ရောက် Reply ပေးထားမှသာ true ပေးမည်။
  */
 const isCommentSection = (ctx) => {
   const msg = ctx.message;
@@ -81,14 +81,17 @@ const isCommentSection = (ctx) => {
 
   const replyTo = msg.reply_to_message;
   
-  // Telegram ၏ Channel Comments များတွင် ဝင်လာသော မက်ဆေ့ခ်ျများသည် အောက်ပါအချက် တစ်ခုခုနှင့် ကိုက်ညီရပါမည် -
+  // Telegram ၏ Linked Comments များတွင် မက်ဆေ့ခ်ျတစ်ခုသည် 
+  // 1. reply_to_message ပါရှိပြီး ထို reply ပေးထားသည့် မက်ဆေ့ခ်ျသည် Channel ကနေ Auto-Forward ဖြစ်လာခြင်း (is_automatic_forward)
+  // 2. သို့မဟုတ် forward_from_chat ပါရှိခြင်း
+  // 3. သို့မဟုတ် sender_chat က channel ဖြစ်နေခြင်း
+  // 4. သို့မဟုတ် message_thread_id (Topic Thread) ပါရှိခြင်း တို့ ရှိရပါမည်။
   if (replyTo) {
     const isAutoForward = replyTo.is_automatic_forward === true;
     const hasForwardChat = !!replyTo.forward_from_chat;
     const isSenderChannel = replyTo.sender_chat && replyTo.sender_chat.type === 'channel';
     const isTopicThread = !!msg.message_thread_id;
 
-    // အကယ်၍ Channel Post ကို Reply ပေးထားခြင်း (သို့မဟုတ်) Linked Discussion ဖြစ်နေလျှင် အလုပ်လုပ်မည်
     if (isAutoForward || hasForwardChat || isSenderChannel || isTopicThread) {
       return true;
     }
@@ -227,7 +230,7 @@ bot.command('broadcast', async (ctx) => {
   }
 });
 
-// 4. Photo Verification Handling (Comment ထဲတွင် မဟုတ်လျှင် လစ်လျူရှုမည်)
+// 4. Photo Verification Handling (Group ထဲတွင် ပို့လျှင် လစ်လျူရှုမည်၊ Comment ထဲမှသာ လက်ခံမည်)
 bot.on('message:photo', async (ctx) => {
   if (!isCommentSection(ctx)) return;
 
@@ -296,7 +299,7 @@ bot.on('message:photo', async (ctx) => {
   deleteMessageLater(ctx, ctx.chat.id, successMsg.message_id, 2000);
 });
 
-// 5. Slot Machine Dice Handling (Comment ထဲတွင် မဟုတ်လျှင် လစ်လျူရှုမည်၊ Balance လုံးဝမပေါင်းပေးပါ)
+// 5. Slot Machine Dice Handling (Group ထဲတွင် Spin လုပ်လျှင် လစ်လျူရှုမည်၊ Comment ထဲမှသာ Balance ပေါင်းပေးမည်)
 bot.on('message:dice', async (ctx) => {
   if (!ctx.message.dice || ctx.message.dice.emoji !== '🎰') return;
   if (!isCommentSection(ctx)) return;

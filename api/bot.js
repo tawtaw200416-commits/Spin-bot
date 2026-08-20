@@ -309,7 +309,7 @@ bot.on('message:dice', async (ctx) => {
   const displayName = ctx.from.username ? `@${ctx.from.username}` : rawUsername;
 
   // ⏱️ ကိုယ်ပိုင် သတ်မှတ်လိုသည့် အချိန် (စက္ကန့်)
-  const slowModeSeconds = 20; 
+  const slowModeSeconds = 25; 
 
   // Cooldown Verification Check
   const now = Date.now();

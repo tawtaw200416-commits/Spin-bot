@@ -63,12 +63,24 @@ const deleteMessageLater = (ctx, chatId, messageId, delay = 2000) => {
   }
 };
 
-// Helper to check if message is inside group chat (Allows regular group posts without requiring a reply)
+// Helper to check if message is strictly inside a comment section (linked channel discussion or forum topic thread)
 const isCommentSection = (ctx) => {
   const msg = ctx.message;
   if (!msg) return false;
-  
-  return ctx.chat?.type === 'supergroup' || ctx.chat?.type === 'group';
+
+  // Channel မှ တိုက်ရိုက်ဝင်လာခြင်း (သို့) senderChat ပါနေလျှင် လုံးဝ လက်မခံပါ
+  if (ctx.senderChat || !ctx.from || ctx.from.is_bot) {
+    return false;
+  }
+
+  const isSupergroupOrGroup = ctx.chat?.type === 'supergroup' || ctx.chat?.type === 'group';
+  if (!isSupergroupOrGroup) return false;
+
+  // Linked Channel ၏ Comment Section (သို့) Topic Thread ထဲတွင် Reply ပေးထားမှသာ Comment အဖြစ် သတ်မှတ်မည်
+  const hasReplyToMessage = !!msg.reply_to_message;
+  const hasThreadId = !!msg.message_thread_id;
+
+  return hasReplyToMessage || hasThreadId;
 };
 
 // Target Post ID Extraction Helper
@@ -200,7 +212,7 @@ bot.command('broadcast', async (ctx) => {
   }
 });
 
-// 4. Photo Verification Handling (Deletes unverified photos immediately)
+// 4. Photo Verification Handling (Comment section မဟုတ်ပါက သို့မဟုတ် General group chat ထဲမှ ပုံဖြစ်ပါက လုံးဝလစ်လျူရှုမည်)
 bot.on('message:photo', async (ctx) => {
   if (!isCommentSection(ctx)) return;
 
@@ -269,7 +281,7 @@ bot.on('message:photo', async (ctx) => {
   deleteMessageLater(ctx, ctx.chat.id, successMsg.message_id, 2000);
 });
 
-// 5. Slot Machine Dice Handling (Verification + Custom Cooldown Check)
+// 5. Slot Machine Dice Handling (Comment section မဟုတ်ပါက သို့မဟုတ် General group chat ထဲမှ Spin ဖြစ်ပါက Balance မပေါင်းပေးဘဲ လစ်လျူရှုမည်)
 bot.on('message:dice', async (ctx) => {
   if (!ctx.message.dice || ctx.message.dice.emoji !== '🎰') return;
   if (!isCommentSection(ctx)) return;

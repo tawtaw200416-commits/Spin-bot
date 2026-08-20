@@ -63,12 +63,16 @@ const deleteMessageLater = (ctx, chatId, messageId, delay = 2000) => {
   }
 };
 
-// Helper to check if message is strictly inside a comment section (linked channel discussion or forum topic thread)
+/**
+ * တိကျသော Comment / Topic စစ်ဆေးချက်
+ * - ပင်မ Group Chat (Main Group Chat) ထဲတွင် တိုက်ရိုက်ပို့ပါက false ပေးပြီး လစ်လျူရှုမည်။
+ * - Channel မှ ဝင်လာသော Linked Comments (သို့မဟုတ် Topic တွင်း Reply ပေးထားခြင်း) ဖြစ်မှသာ true ပေးမည်။
+ */
 const isCommentSection = (ctx) => {
   const msg = ctx.message;
   if (!msg) return false;
 
-  // Channel မှ တိုက်ရိုက်ဝင်လာခြင်း (သို့) senderChat ပါနေလျှင် လုံးဝ လက်မခံပါ
+  // Bot ဖြစ်နေလျှင် သို့မဟုတ် senderChat ဖြစ်နေလျှင် လုံးဝ လက်မခံပါ
   if (ctx.senderChat || !ctx.from || ctx.from.is_bot) {
     return false;
   }
@@ -76,10 +80,13 @@ const isCommentSection = (ctx) => {
   const isSupergroupOrGroup = ctx.chat?.type === 'supergroup' || ctx.chat?.type === 'group';
   if (!isSupergroupOrGroup) return false;
 
-  // Linked Channel ၏ Comment Section (သို့) Topic Thread ထဲတွင် Reply ပေးထားမှသာ Comment အဖြစ် သတ်မှတ်မည်
+  // 1. Channel Linked Discussion ၏ Comment ဖြစ်ကြောင်းပြသော sender_chat (Channel) သို့မဟုတ် author_signature (သို့) 
+  // 2. reply_to_message ပါရှိခြင်း (သို့မဟုတ် message_thread_id ပါရှိခြင်း)
+  // ပင်မ Group Chat ထဲတွင် အလကားလာပို့သော ပုံနှင့် Spin များတွင် reply_to_message လုံးဝ မပါတတ်ပါ။
   const hasReplyToMessage = !!msg.reply_to_message;
   const hasThreadId = !!msg.message_thread_id;
-
+  
+  // Telegram ၏ Linked Discussion Group များတွင် channel က post တင်ထားတာကို reply ပေးထားခြင်း (သို့) topic thread ဖြစ်ခြင်းကို စစ်ဆေးသည်
   return hasReplyToMessage || hasThreadId;
 };
 
@@ -212,7 +219,7 @@ bot.command('broadcast', async (ctx) => {
   }
 });
 
-// 4. Photo Verification Handling (Comment section မဟုတ်ပါက သို့မဟုတ် General group chat ထဲမှ ပုံဖြစ်ပါက လုံးဝလစ်လျူရှုမည်)
+// 4. Photo Verification Handling (Comment Section မဟုတ်ဘဲ Main Group ထဲမှာလာပို့တဲ့ပုံဆိုရင် လုံးဝ လစ်လျူရှုမည်)
 bot.on('message:photo', async (ctx) => {
   if (!isCommentSection(ctx)) return;
 
@@ -281,7 +288,7 @@ bot.on('message:photo', async (ctx) => {
   deleteMessageLater(ctx, ctx.chat.id, successMsg.message_id, 2000);
 });
 
-// 5. Slot Machine Dice Handling (Comment section မဟုတ်ပါက သို့မဟုတ် General group chat ထဲမှ Spin ဖြစ်ပါက Balance မပေါင်းပေးဘဲ လစ်လျူရှုမည်)
+// 5. Slot Machine Dice Handling (Comment Section မဟုတ်ဘဲ Main Group ထဲမှာလာဆော့တဲ့ Spin ဆိုရင် လုံးဝ လစ်လျူရှုမည်၊ Balance မပေါင်းပေးပါ)
 bot.on('message:dice', async (ctx) => {
   if (!ctx.message.dice || ctx.message.dice.emoji !== '🎰') return;
   if (!isCommentSection(ctx)) return;

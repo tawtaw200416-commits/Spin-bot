@@ -120,8 +120,12 @@ bot.command('start', async (ctx) => {
 bot.command('spin', async (ctx) => {
   if (!isCommentSection(ctx)) return;
 
+  const userId = ctx.from?.id;
+  const rawUsername = ctx.from?.username || ctx.from?.first_name || `ID: ${userId}`;
+  const displayName = ctx.from?.username ? `@${ctx.from.username}` : rawUsername;
+
   const postLink = getPostLink(ctx);
-  const promptText = `⚠️ <b>Proof Verification Required!</b>\n\n` +
+  const promptText = `⚠️ <b>Proof Verification Required ${displayName}!</b>\n\n` +
     `Please send a screenshot with reaction (❤️ / 👍) given to the post and caption <code>@Rampage528</code> in the group!\n\n` +
     `🔗 <b>Target Post:</b> <a href="${postLink}">Click Here To View Post</a>`;
 
@@ -218,7 +222,7 @@ bot.on('message:photo', async (ctx) => {
     }
 
     const errorMsg = await ctx.reply(
-      `❌ <b>Invalid Verification!</b>\n` +
+      `❌ <b>Invalid Verification ${displayName}!</b>\n` +
       `Your screenshot was rejected and deleted because the caption is incorrect! Please include caption <code>@Rampage528</code> and reaction (❤️ / 👍).\n\n` +
       `🔗 <b>Target Post:</b> <a href="${postLink}">Click Here To View Post</a>`,
       { 
@@ -274,7 +278,7 @@ bot.on('message:dice', async (ctx) => {
   const rawUsername = ctx.from.username || ctx.from.first_name || `ID: ${userId}`;
   const displayName = ctx.from.username ? `@${ctx.from.username}` : rawUsername;
 
-  // ⏱️ ကိုယ်ပိုင် သတ်မှတ်လိုသည့် အချိန် (စက္ကန့်) - လိုသလို ဒီနေရာမှာ ပြင်နိုင်ပါတယ် (ဥပမာ - 2 သို့မဟုတ် 3 စက္ကန့်)
+  // ⏱️ ကိုယ်ပိုင် သတ်မှတ်လိုသည့် အချိန် (စက္ကန့်)
   const slowModeSeconds = 20; 
 
   // Cooldown Verification Check
@@ -329,7 +333,7 @@ bot.on('message:dice', async (ctx) => {
     }
 
     const postLink = getPostLink(ctx);
-    const warningText = `⚠️ <b>Proof Verification Required!</b>\n\n` +
+    const warningText = `⚠️ <b>Proof Verification Required ${displayName}!</b>\n\n` +
       `Your spin was deleted because you haven't verified yet! Please send a screenshot with reaction (❤️ / 👍) and caption <code>@Rampage528</code> first!\n\n` +
       `🔗 <b>Target Post:</b> <a href="${postLink}">Click Here To View Post</a>`;
 
